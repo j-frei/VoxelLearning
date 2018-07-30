@@ -89,7 +89,7 @@ def samplingGaussian(args,n_gaussians,shape):
         for i in range(n_gaussians):
             dis = MultivariateNormal(loc=mu[i],scale_identity_multiplier=sig[i])
             sam = K.expand_dims(dis.prob(grid),-1)
-            sampled += sam
+            sampled = tf.add(tf.identity(sampled),sam)
 
         return sampled
 
@@ -121,9 +121,12 @@ def empty_loss(true_y,pred_y):
 
 def create_model(input_shape):
     config = {'batchnorm':False}
-    n_gaussians = 6
+    n_gaussians = 30
     x = Input(shape=input_shape)
     out = __vnet_level__(x,[32,32,32],config)
+    # down-conv
+    out = Conv3D(3,kernel_size=3)(out)
+    #outx = out
     mu=Reshape((n_gaussians,3))(Dense(n_gaussians*3,activation="linear")(Flatten()(out)))
 
     log_sigma_scalar = Reshape((n_gaussians, 1))(Dense(n_gaussians, activation="linear")(Flatten()(out)))
@@ -141,7 +144,6 @@ def create_model(input_shape):
     out = Lambda(transformVolume,name="img_warp")([x,disp])
 
     loss = [empty_loss,binary_crossentropy]
-
     model = Model(inputs=x,outputs=[disp,out])
     model.compile(optimizer=Adam(lr=1e-4),loss=loss,metrics=['accuracy'])
     return model

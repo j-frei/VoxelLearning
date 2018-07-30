@@ -76,7 +76,8 @@ def readNormalizedVolumeByPath(vol_path):
     vol_np = np.flip(vol_np, 1)
     vol_np = np.flip(vol_np, 0)
     out = centerVolume(normalize(vol_np))
-    return out[::4,::4,::4]
+    return out[::2,::2,::2]
+    #return out[::4,::4,::4]
 
 def fixAxesITK(np_vol):
     return np.stack((np_vol[:, :, :, 1], np_vol[:, :, :, 0], np_vol[:, :, :, 2]), 3)
