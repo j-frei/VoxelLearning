@@ -33,5 +33,5 @@ def loadOASISData():
         props['img'] = glob(x)[0]
         return props
 
-    props = [ subjectProperties(sb) for sb in subjects ]
+    props = sorted([ subjectProperties(sb) for sb in subjects ],key=lambda obj:obj['id'])
     return props

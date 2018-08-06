@@ -4,6 +4,7 @@ import tensorflow as tf
 from keras.losses import binary_crossentropy
 from keras.optimizers import Adam
 from tensorflow import keras
+import numpy as np
 from keras import Model
 from keras.layers import Conv3D, Conv3DTranspose, Dense, BatchNormalization, Input, Concatenate, UpSampling3D, \
     MaxPool3D, K, Flatten, Reshape, Lambda
@@ -11,6 +12,7 @@ from tensorflow.contrib.distributions import MultivariateNormalDiag as Multivari
 from tensorflow.python.ops.losses.util import add_loss
 
 from dense_3D_spatial_transformer import Dense3DSpatialTransformer
+from losses import cc3D
 from volumetools import volumeGradients, tfVectorFieldExp
 
 sess = tf.Session()
@@ -55,9 +57,7 @@ def sampling(args):
     epsilon = K.random_normal(shape=(batch, dim))#
 
     kl = 0.5 * K.sum(K.exp(z_log_var) + K.square(z_mean) - 1. - z_log_var, axis=1)
-    add_loss(kl)
-
-    return z_mean + K.exp(0.5 * z_log_var) * epsilon
+    return kl
 
 def _meshgrid(height, width, depth):
     x_t = tf.matmul(tf.ones(shape=tf.stack([height, 1])),
@@ -78,22 +78,24 @@ def _meshgrid(height, width, depth):
 
 
 def samplingGaussian(args,n_gaussians,shape):
-    z_mean, z_log_sigma = args
+    z_mean, z_log_sigma,z_weights = args
     gx,gy,gz = _meshgrid(shape[0],shape[1],shape[2])
     grid = tf.stack([gx,gy,gz],-1)
 
+
     def sampleGaussian(inputs):
         sampled = tf.zeros(shape=(shape[0],shape[1],shape[2],1))
-        mu,sig = inputs
+        mu,sig,w = inputs
+        dims = np.asarray(shape[0:3])/2.
 
         for i in range(n_gaussians):
-            dis = MultivariateNormal(loc=mu[i],scale_identity_multiplier=sig[i])
-            sam = K.expand_dims(dis.prob(grid),-1)
+            dis = MultivariateNormal(loc=(mu[i]/dims)+dims,scale_identity_multiplier=sig[i]*np.max(dims))
+            sam = w[i]*K.expand_dims(dis.prob(grid),-1)
             sampled = tf.add(tf.identity(sampled),sam)
 
         return sampled
 
-    res = tf.map_fn(sampleGaussian,elems=[z_mean,z_log_sigma],dtype=tf.float32)
+    res = tf.map_fn(sampleGaussian,elems=[z_mean,z_log_sigma,z_weights],dtype=tf.float32)
     return res
 
 def toDisplacements(args):
@@ -121,29 +123,35 @@ def empty_loss(true_y,pred_y):
 
 def create_model(input_shape):
     config = {'batchnorm':False}
-    n_gaussians = 30
+    n_gaussians = 20
     x = Input(shape=input_shape)
-    out = __vnet_level__(x,[32,32,32],config)
+    out = __vnet_level__(x,[32,32],config)
     # down-conv
-    out = Conv3D(3,kernel_size=3)(out)
+    out_downconv = Conv3D(3,kernel_size=3)(out)
     #outx = out
-    mu=Reshape((n_gaussians,3))(Dense(n_gaussians*3,activation="linear")(Flatten()(out)))
+    mu=Reshape((n_gaussians,3))(Dense(n_gaussians*3,activation="linear")(Flatten()(out_downconv)))
 
-    log_sigma_scalar = Reshape((n_gaussians, 1))(Dense(n_gaussians, activation="linear")(Flatten()(out)))
-    log_sigma=Reshape((n_gaussians,1))(log_sigma_scalar)
+    log_sigma = Reshape((n_gaussians, 1))(Dense(n_gaussians, activation="linear")(Flatten()(out_downconv)))
+    gaussian_scale = Reshape((n_gaussians, 1))(Dense(n_gaussians, activation="linear")(Flatten()(out_downconv)))
+
+    #log_sigma_scalar = Reshape((n_gaussians, 1))(Dense(n_gaussians, activation="linear")(Flatten()(out_downconv)))
+    #log_sigma=Reshape((n_gaussians,1))(log_sigma_scalar)
 
     # TODO: Add KL minimization
     #z = Lambda(sampling, name='z',output_shape=K.int_shape(x))([mu, log_sigma])
 
-    velocity_maps = Lambda(samplingGaussian,name="gaussian_sampling", arguments={'n_gaussians':n_gaussians,'shape':input_shape})([mu,log_sigma])
+    velocity_maps = Lambda(samplingGaussian,name="gaussian_sampling", arguments={'n_gaussians':n_gaussians,'shape':input_shape})([mu,log_sigma,gaussian_scale])
 
     grads = Lambda(volumeGradients,name="gradients")(velocity_maps)
 
-    disp = Lambda(toDisplacements,name="manifold_walk")(grads)
+    disp = Lambda(toDisplacements,name="manifold_walk1")(grads)
+    disp = Lambda(toDisplacements,name="manifold_walk2")(disp)
+    disp = Lambda(toDisplacements,name="manifold_walk3")(disp)
+    disp = Lambda(toDisplacements,name="manifold_walk4")(disp)
 
     out = Lambda(transformVolume,name="img_warp")([x,disp])
 
-    loss = [empty_loss,binary_crossentropy]
-    model = Model(inputs=x,outputs=[disp,out])
+    loss = [empty_loss,cc3D(),empty_loss,empty_loss,empty_loss]
+    model = Model(inputs=x,outputs=[disp,out,mu,log_sigma,gaussian_scale])
     model.compile(optimizer=Adam(lr=1e-4),loss=loss,metrics=['accuracy'])
     return model
