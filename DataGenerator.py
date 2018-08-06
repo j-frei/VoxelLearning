@@ -7,7 +7,7 @@ from Preprocessing import readNormalizedVolumeByPath
 
 def addKeys(config):
     config['batchsize'] = config.get('batchsize',2)
-    config['split'] = config.get('split',config['split'])
+    config['split'] = config.get('split',0.8)
     config['validation'] = config.get('validation',0.1)
     config['resolution'] = config.get('resolution',(128,128,128))
     config['spacings'] = config.get('spacings',(1.5,1.5,1.5))
@@ -34,7 +34,8 @@ def loadAtlas(config):
     atlas_mask_path = os.path.join(os.path.dirname(__file__),"atlas","icbm_avg_152_t1_tal_lin_mask.nii")
     atlas = readNormalizedVolumeByPath(atlas_path,config)
     atlas_mask = readNormalizedVolumeByPath(atlas_mask_path,config)
-    return atlas*atlas_mask
+    # apply mask
+    return (atlas*(atlas_mask>0.5)).astype("float32")
 
 def getBatches(*args):
     q,p_number,config = args
