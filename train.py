@@ -13,11 +13,13 @@ import multiprocessing as mp
 
 #mp.set_start_method("spawn")
 train_config = {
-    'batchsize':1,
+    'batchsize':2,
     'split':0.9,
     'validation':0.1,
     'resolution':(96,96,96),
     'spacings':(2.,2.,2.),
+    'epochs': 250,
+    'model_output': 'model.pkl'
 }
 
 training_elements = int(len(loadOASISData())*train_config['split']*(1-train_config['validation']))
@@ -37,18 +39,23 @@ tb_writers = [
     ("fixedImage","image",lambda dic: dic['val_X'][:,:,:,:,0].reshape(dic['batchsize'],*train_config['resolution'])[:,:,:,int(train_config['resolution'][2]/2.)].astype("float32").reshape(dic['batchsize'],*train_config['resolution'][:2],1)),
     ("warpedImage","image",lambda dic: dic['pred'][1][:,:,:,:,0].reshape(dic['batchsize'],*train_config['resolution'])[:,:,:,int(train_config['resolution'][2]/2.)].astype("float32").reshape(dic['batchsize'],*train_config['resolution'][:2],1)),
     ("dispField","image",lambda dic: dic['pred'][0][:,:,:,:,0].reshape(dic['batchsize'],*train_config['resolution'])[:,:,:,int(train_config['resolution'][2]/2.)].astype("float32").reshape(dic['batchsize'],*train_config['resolution'][:2],1)),
-    ("emb","text",lambda dic: "\n".join([ str(x) for x in dic['pred'][2:]]))
+    #("emb","text",lambda dic: "\n".join([ str(x) for x in dic['pred'][2:]]))
 ]
 
 model = create_model((*train_config['resolution'],2))
-
+tf.set_random_seed(0)
 sess = tf.keras.backend.get_session()
 with sess.as_default():
     tb = TensorBoard(log_dir='./logs')
     model.fit_generator(generator=train_generator(),
                         validation_data=[validation_data,validation_data_y],
-                        epochs=50,
+                        epochs=train_config['epochs'],
                         steps_per_epoch=int(training_elements/train_config['batchsize']),
                         callbacks=[tb,Logger(tb_logs=tb_writers)]
                         )
+    model.save(train_config['model_output'])
+
+data_queue.close()
+for p in processes:
+    p.terminate()
 

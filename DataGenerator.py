@@ -100,8 +100,9 @@ def inferYFromBatch(batch,config):
     y = [
         np.asarray([ np.zeros(shape=(*config['resolution'], 3)).astype(np.float32) for _ in range(len(batch)) ]),
         np.asarray([ volumes[:,:,:,0].reshape(*config['resolution'], 1) for volumes in batch ]),
-        np.asarray([ [[0., 0., 0.] for _ in range(20)] for _ in range(len(batch))]).reshape(len(batch), 20, 3),
-        np.asarray([ [0. for _ in range(20)] for _ in range(len(batch))]).reshape(len(batch), 20, 1),
-        np.asarray([ [0. for _ in range(20)] for _ in range(len(batch))]).reshape(len(batch), 20, 1),
+        np.asarray([np.zeros(shape=(*config['resolution'], 2)).astype(np.float32) for _ in range(len(batch))]),
+    #    np.asarray([ [[0., 0., 0.] for _ in range(20)] for _ in range(len(batch))]).reshape(len(batch), 20, 3),
+    #    np.asarray([ [0. for _ in range(20)] for _ in range(len(batch))]).reshape(len(batch), 20, 1),
+    #    np.asarray([ [0. for _ in range(20)] for _ in range(len(batch))]).reshape(len(batch), 20, 1),
     ]
     return y

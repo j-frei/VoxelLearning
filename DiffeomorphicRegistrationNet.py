@@ -1,5 +1,4 @@
 from functools import partial
-
 import tensorflow as tf
 from keras.losses import binary_crossentropy
 from keras.optimizers import Adam
@@ -14,8 +13,6 @@ from tensorflow.python.ops.losses.util import add_loss
 from dense_3D_spatial_transformer import Dense3DSpatialTransformer
 from losses import cc3D
 from volumetools import volumeGradients, tfVectorFieldExp
-
-sess = tf.Session()
 
 def __vnet_level__(in_layer, filters, config):
     if len(filters) == 1:
@@ -42,22 +39,13 @@ def __vnet_level__(in_layer, filters, config):
 
         return tlayer
 
-
-def __kl_loss__(true_y,pred_y):
-    mu,log_sigma = pred_y
-    kl = 0.5 * K.sum(K.exp(log_sigma) + K.square(mu) - 1. - log_sigma, axis=1)
-    return kl
-
 def sampling(args):
-    z_mean, z_log_var = args
+    z_mean, z_log_sigma = args
     batch = K.shape(z_mean)[0]
-    dim = K.int_shape(z_mean)[1]
-    print(K.int_shape(z_mean)[1])
-    # by default, random_normal has mean=0 and std=1.0
-    epsilon = K.random_normal(shape=(batch, dim))#
-
-    kl = 0.5 * K.sum(K.exp(z_log_var) + K.square(z_mean) - 1. - z_log_var, axis=1)
-    return kl
+    dim = K.int_shape(z_mean)[1:4]
+    epsilon = K.random_normal(shape=(batch, *dim, 1),dtype=tf.float32)
+    xout = z_mean + K.exp(z_log_sigma) * epsilon
+    return xout
 
 def _meshgrid(height, width, depth):
     x_t = tf.matmul(tf.ones(shape=tf.stack([height, 1])),
@@ -120,6 +108,11 @@ def transformVolume(args):
 def empty_loss(true_y,pred_y):
     return tf.constant(0.,dtype=tf.float32)
 
+def sampleLoss(true_y,pred_y):
+    z_mean = tf.expand_dims(pred_y[:,:,:,:,0],-1)
+    z_log_sigma = tf.expand_dims(pred_y[:,:,:,:,1],-1)
+    return - 0.5 * K.mean(1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma), axis=-1)
+
 
 def create_model(input_shape):
     config = {'batchnorm':False}
@@ -127,31 +120,29 @@ def create_model(input_shape):
     x = Input(shape=input_shape)
     out = __vnet_level__(x,[32,32],config)
     # down-conv
-    out_downconv = Conv3D(3,kernel_size=3)(out)
-    #outx = out
-    mu=Reshape((n_gaussians,3))(Dense(n_gaussians*3,activation="linear")(Flatten()(out_downconv)))
+    mu = Conv3D(1,kernel_size=3, padding='same')(out)
+    log_sigma = Conv3D(1,kernel_size=3, padding='same')(out)
 
-    log_sigma = Reshape((n_gaussians, 1))(Dense(n_gaussians, activation="linear")(Flatten()(out_downconv)))
-    gaussian_scale = Reshape((n_gaussians, 1))(Dense(n_gaussians, activation="linear")(Flatten()(out_downconv)))
+    sampled_velocity_maps = Lambda(sampling,name="variationalVelocitySampling")([mu,log_sigma])
 
-    #log_sigma_scalar = Reshape((n_gaussians, 1))(Dense(n_gaussians, activation="linear")(Flatten()(out_downconv)))
-    #log_sigma=Reshape((n_gaussians,1))(log_sigma_scalar)
+    #z = Lambda(lambda args: tf.stack([args[0],args[1]],axis=4), name='zVariationalLoss')([mu, log_sigma])
+    z = Concatenate(name='zVariationalLoss')([mu, log_sigma])
 
-    # TODO: Add KL minimization
-    #z = Lambda(sampling, name='z',output_shape=K.int_shape(x))([mu, log_sigma])
-
-    velocity_maps = Lambda(samplingGaussian,name="gaussian_sampling", arguments={'n_gaussians':n_gaussians,'shape':input_shape})([mu,log_sigma,gaussian_scale])
-
-    grads = Lambda(volumeGradients,name="gradients")(velocity_maps)
+    grads = Lambda(volumeGradients,name="gradients")(sampled_velocity_maps)
 
     disp = Lambda(toDisplacements,name="manifold_walk1")(grads)
     disp = Lambda(toDisplacements,name="manifold_walk2")(disp)
     disp = Lambda(toDisplacements,name="manifold_walk3")(disp)
     disp = Lambda(toDisplacements,name="manifold_walk4")(disp)
+    disp = Lambda(toDisplacements,name="manifold_walk5")(disp)
+    disp = Lambda(toDisplacements,name="manifold_walk6")(disp)
+    disp = Lambda(toDisplacements,name="manifold_walk7")(disp)
 
     out = Lambda(transformVolume,name="img_warp")([x,disp])
 
-    loss = [empty_loss,cc3D(),empty_loss,empty_loss,empty_loss]
-    model = Model(inputs=x,outputs=[disp,out,mu,log_sigma,gaussian_scale])
+    #loss = [empty_loss,cc3D(),empty_loss,empty_loss,empty_loss]
+    loss = [empty_loss,cc3D(),sampleLoss]
+    #model = Model(inputs=x,outputs=[disp,out,mu,log_sigma,gaussian_scale])
+    model = Model(inputs=x,outputs=[disp,out,z])
     model.compile(optimizer=Adam(lr=1e-4),loss=loss,metrics=['accuracy'])
     return model
