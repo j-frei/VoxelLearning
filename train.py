@@ -18,7 +18,7 @@ train_config = {
     'validation':0.1,
     'resolution':(96,96,96),
     'spacings':(2.,2.,2.),
-    'epochs': 250,
+    'epochs': 500,
     'model_output': 'model.pkl'
 }
 

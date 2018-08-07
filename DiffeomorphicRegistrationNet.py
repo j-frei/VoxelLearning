@@ -4,7 +4,7 @@ from keras.losses import binary_crossentropy
 from keras.optimizers import Adam
 from tensorflow import keras
 import numpy as np
-from keras import Model
+from keras.models import Model
 from keras.layers import Conv3D, Conv3DTranspose, Dense, BatchNormalization, Input, Concatenate, UpSampling3D, \
     MaxPool3D, K, Flatten, Reshape, Lambda
 from tensorflow.contrib.distributions import MultivariateNormalDiag as MultivariateNormal
@@ -120,15 +120,16 @@ def create_model(input_shape):
     x = Input(shape=input_shape)
     out = __vnet_level__(x,[32,32],config)
     # down-conv
-    mu = Conv3D(1,kernel_size=3, padding='same')(out)
-    log_sigma = Conv3D(1,kernel_size=3, padding='same')(out)
+    mu = Conv3D(3,kernel_size=3, padding='same')(out)
+    log_sigma = Conv3D(3,kernel_size=3, padding='same')(out)
 
     sampled_velocity_maps = Lambda(sampling,name="variationalVelocitySampling")([mu,log_sigma])
 
     #z = Lambda(lambda args: tf.stack([args[0],args[1]],axis=4), name='zVariationalLoss')([mu, log_sigma])
     z = Concatenate(name='zVariationalLoss')([mu, log_sigma])
 
-    grads = Lambda(volumeGradients,name="gradients")(sampled_velocity_maps)
+    #grads = Lambda(volumeGradients,name="gradients")(sampled_velocity_maps)
+    grads = sampled_velocity_maps
 
     disp = Lambda(toDisplacements,name="manifold_walk1")(grads)
     disp = Lambda(toDisplacements,name="manifold_walk2")(disp)
@@ -142,7 +143,8 @@ def create_model(input_shape):
 
     #loss = [empty_loss,cc3D(),empty_loss,empty_loss,empty_loss]
     loss = [empty_loss,cc3D(),sampleLoss]
+    lossWeights = [0,1.5,0.5]
     #model = Model(inputs=x,outputs=[disp,out,mu,log_sigma,gaussian_scale])
     model = Model(inputs=x,outputs=[disp,out,z])
-    model.compile(optimizer=Adam(lr=1e-4),loss=loss,metrics=['accuracy'])
+    model.compile(optimizer=Adam(lr=1e-4),loss=loss,loss_weights=lossWeights,metrics=['accuracy'])
     return model

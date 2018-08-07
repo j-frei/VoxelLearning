@@ -1,7 +1,7 @@
 from tensorflow.python.ops import array_ops
 import tensorflow as tf
 import numpy as np
-
+from keras.layers import K
 from dense_3D_spatial_transformer import Dense3DSpatialTransformer
 
 
