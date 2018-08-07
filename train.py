@@ -13,7 +13,7 @@ import multiprocessing as mp
 
 #mp.set_start_method("spawn")
 train_config = {
-    'batchsize':2,
+    'batchsize':1,
     'split':0.9,
     'validation':0.1,
     'resolution':(96,96,96),
@@ -39,10 +39,13 @@ tb_writers = [
     ("fixedImage","image",lambda dic: dic['val_X'][:,:,:,:,0].reshape(dic['batchsize'],*train_config['resolution'])[:,:,:,int(train_config['resolution'][2]/2.)].astype("float32").reshape(dic['batchsize'],*train_config['resolution'][:2],1)),
     ("warpedImage","image",lambda dic: dic['pred'][1][:,:,:,:,0].reshape(dic['batchsize'],*train_config['resolution'])[:,:,:,int(train_config['resolution'][2]/2.)].astype("float32").reshape(dic['batchsize'],*train_config['resolution'][:2],1)),
     ("dispField","image",lambda dic: dic['pred'][0][:,:,:,:,0].reshape(dic['batchsize'],*train_config['resolution'])[:,:,:,int(train_config['resolution'][2]/2.)].astype("float32").reshape(dic['batchsize'],*train_config['resolution'][:2],1)),
+    ("velocityFieldX","image",lambda dic: dic['pred'][2][:,:,:,:,0].reshape(dic['batchsize'],*train_config['resolution'])[:,:,:,int(train_config['resolution'][2]/2.)].astype("float32").reshape(dic['batchsize'],*train_config['resolution'][:2],1)),
+    ("velocityFieldY","image",lambda dic: dic['pred'][2][:,:,:,:,1].reshape(dic['batchsize'],*train_config['resolution'])[:,:,:,int(train_config['resolution'][2]/2.)].astype("float32").reshape(dic['batchsize'],*train_config['resolution'][:2],1)),
+    ("velocityFieldZ","image",lambda dic: dic['pred'][2][:,:,:,:,2].reshape(dic['batchsize'],*train_config['resolution'])[:,:,:,int(train_config['resolution'][2]/2.)].astype("float32").reshape(dic['batchsize'],*train_config['resolution'][:2],1)),
     #("emb","text",lambda dic: "\n".join([ str(x) for x in dic['pred'][2:]]))
 ]
 
-model = create_model((*train_config['resolution'],2))
+model = create_model(train_config)
 tf.set_random_seed(0)
 sess = tf.keras.backend.get_session()
 with sess.as_default():

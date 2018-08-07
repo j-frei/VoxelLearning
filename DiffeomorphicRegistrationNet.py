@@ -1,3 +1,4 @@
+import functools
 from functools import partial
 import tensorflow as tf
 from keras.losses import binary_crossentropy
@@ -6,7 +7,7 @@ from tensorflow import keras
 import numpy as np
 from keras.models import Model
 from keras.layers import Conv3D, Conv3DTranspose, Dense, BatchNormalization, Input, Concatenate, UpSampling3D, \
-    MaxPool3D, K, Flatten, Reshape, Lambda
+    MaxPool3D, K, Flatten, Reshape, Lambda, LeakyReLU
 from tensorflow.contrib.distributions import MultivariateNormalDiag as MultivariateNormal
 from tensorflow.python.ops.losses.util import add_loss
 
@@ -16,25 +17,25 @@ from volumetools import volumeGradients, tfVectorFieldExp
 
 def __vnet_level__(in_layer, filters, config):
     if len(filters) == 1:
-        return Conv3D(filters=filters[0],kernel_size=3,activation='relu',padding='same')(in_layer)
+        return Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(in_layer))
     else:
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, activation='relu', padding='same')(in_layer)
+        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(in_layer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, activation='relu', padding='same')(tlayer)
+        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(tlayer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
         down = MaxPool3D(pool_size=2)(tlayer)
 
         out_deeper = __vnet_level__(down,filters[1:],config)
-        up = Conv3D(filters[0], 3, activation='relu', padding='same')(UpSampling3D(size=(2, 2, 2))(out_deeper))
+        up = Conv3D(filters[0], 3, padding='same')(LeakyReLU()(UpSampling3D(size=(2, 2, 2))(out_deeper)))
 
         tlayer = Concatenate()([up,tlayer])
 
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, activation='relu', padding='same')(tlayer)
+        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(tlayer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, activation='relu', padding='same')(tlayer)
+        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(tlayer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
         return tlayer
@@ -43,7 +44,8 @@ def sampling(args):
     z_mean, z_log_sigma = args
     batch = K.shape(z_mean)[0]
     dim = K.int_shape(z_mean)[1:4]
-    epsilon = K.random_normal(shape=(batch, *dim, 1),dtype=tf.float32)
+    #flattened_dim = functools.reduce(lambda x,y:x*y,[*dim,3])
+    epsilon = tf.reshape(K.random_normal(shape=(batch, *dim, 3),dtype=tf.float32),(batch,*dim,3))
     xout = z_mean + K.exp(z_log_sigma) * epsilon
     return xout
 
@@ -108,21 +110,27 @@ def transformVolume(args):
 def empty_loss(true_y,pred_y):
     return tf.constant(0.,dtype=tf.float32)
 
+def smoothness_loss(true_y,pred_y):
+    dx = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,0],-1)))
+    dy = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,1],-1)))
+    dz = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,2],-1)))
+    return 1e-5*tf.reduce_sum(dx+dy+dz, axis=[1, 2, 3, 4])
+
 def sampleLoss(true_y,pred_y):
     z_mean = tf.expand_dims(pred_y[:,:,:,:,0],-1)
     z_log_sigma = tf.expand_dims(pred_y[:,:,:,:,1],-1)
     return - 0.5 * K.mean(1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma), axis=-1)
 
 
-def create_model(input_shape):
-    config = {'batchnorm':False}
-    n_gaussians = 20
+def create_model(config):
+    input_shape = (*config['resolution'][0:3],2)
+
     x = Input(shape=input_shape)
-    out = __vnet_level__(x,[32,32],config)
+    out = __vnet_level__(x,[32,32,32,64],config)
     # down-conv
     mu = Conv3D(3,kernel_size=3, padding='same')(out)
     log_sigma = Conv3D(3,kernel_size=3, padding='same')(out)
-
+    
     sampled_velocity_maps = Lambda(sampling,name="variationalVelocitySampling")([mu,log_sigma])
 
     #z = Lambda(lambda args: tf.stack([args[0],args[1]],axis=4), name='zVariationalLoss')([mu, log_sigma])
@@ -142,9 +150,9 @@ def create_model(input_shape):
     out = Lambda(transformVolume,name="img_warp")([x,disp])
 
     #loss = [empty_loss,cc3D(),empty_loss,empty_loss,empty_loss]
-    loss = [empty_loss,cc3D(),sampleLoss]
-    lossWeights = [0,1.5,0.5]
+    loss = [empty_loss,cc3D(),smoothness_loss,sampleLoss]
+    lossWeights = [0,1.5,0.25,0.25]
     #model = Model(inputs=x,outputs=[disp,out,mu,log_sigma,gaussian_scale])
-    model = Model(inputs=x,outputs=[disp,out,z])
+    model = Model(inputs=x,outputs=[disp,out,sampled_velocity_maps,z])
     model.compile(optimizer=Adam(lr=1e-4),loss=loss,loss_weights=lossWeights,metrics=['accuracy'])
     return model
