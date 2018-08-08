@@ -128,8 +128,8 @@ def create_model(config):
     x = Input(shape=input_shape)
     out = __vnet_level__(x,[32,32,32,64],config)
     # down-conv
-    mu = Conv3D(3,kernel_size=3, padding='same')(out)
-    log_sigma = Conv3D(3,kernel_size=3, padding='same')(out)
+    mu = Conv3D(3,kernel_size=3, padding='same',activation="tanh")(out)
+    log_sigma = Conv3D(3,kernel_size=3, padding='same',activation="tanh")(out)
     
     sampled_velocity_maps = Lambda(sampling,name="variationalVelocitySampling")([mu,log_sigma])
 
