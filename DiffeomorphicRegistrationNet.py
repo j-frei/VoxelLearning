@@ -88,17 +88,22 @@ def samplingGaussian(args,n_gaussians,shape):
     res = tf.map_fn(sampleGaussian,elems=[z_mean,z_log_sigma,z_weights],dtype=tf.float32)
     return res
 
-def toDisplacements(args):
-    grads = args
-    height = K.shape(grads)[1]
-    width = K.shape(grads)[2]
-    depth = K.shape(grads)[3]
+def toDisplacements(n_squaringScaling):
+    def displacementWalk(args):
+        grads = args
+        height = K.shape(grads)[1]
+        width = K.shape(grads)[2]
+        depth = K.shape(grads)[3]
 
-    _grid = tf.reshape(tf.stack(_meshgrid(height,width,depth),-1),(1,height,width,depth,3))
-    _stacked = tf.tile(_grid,(tf.shape(grads)[0],1,1,1,1))
-    grids = tf.reshape(_stacked,(tf.shape(grads)[0],tf.shape(grads)[1],tf.shape(grads)[2],tf.shape(grads)[3],3))
+        _grid = tf.reshape(tf.stack(_meshgrid(height,width,depth),-1),(1,height,width,depth,3))
+        _stacked = tf.tile(_grid,(tf.shape(grads)[0],1,1,1,1))
+        grids = tf.reshape(_stacked,(tf.shape(grads)[0],tf.shape(grads)[1],tf.shape(grads)[2],tf.shape(grads)[3],3))
 
-    return tfVectorFieldExp(tf.multiply(grads,-1.),grids)
+        out = grads
+        for i in range(n_squaringScaling):
+            out = tfVectorFieldExp(tf.identity(out),grids) + tf.identity(out)
+        return out
+    return displacementWalk
 
 
 def transformVolume(args):
@@ -114,7 +119,7 @@ def smoothness_loss(true_y,pred_y):
     dx = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,0],-1)))
     dy = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,1],-1)))
     dz = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,2],-1)))
-    return 1e-5*tf.reduce_sum(dx+dy+dz, axis=[1, 2, 3, 4])
+    return 1e-4*tf.reduce_sum(dx+dy+dz, axis=[1, 2, 3, 4])
 
 def sampleLoss(true_y,pred_y):
     z_mean = tf.expand_dims(pred_y[:,:,:,:,0],-1)
@@ -139,13 +144,7 @@ def create_model(config):
     #grads = Lambda(volumeGradients,name="gradients")(sampled_velocity_maps)
     grads = sampled_velocity_maps
 
-    disp = Lambda(toDisplacements,name="manifold_walk1")(grads)
-    disp = Lambda(toDisplacements,name="manifold_walk2")(disp)
-    disp = Lambda(toDisplacements,name="manifold_walk3")(disp)
-    disp = Lambda(toDisplacements,name="manifold_walk4")(disp)
-    disp = Lambda(toDisplacements,name="manifold_walk5")(disp)
-    disp = Lambda(toDisplacements,name="manifold_walk6")(disp)
-    disp = Lambda(toDisplacements,name="manifold_walk7")(disp)
+    disp = Lambda(toDisplacements(n_squaringScaling=7),name="manifold_walk")(grads)
 
     out = Lambda(transformVolume,name="img_warp")([x,disp])
 
