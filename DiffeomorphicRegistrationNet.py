@@ -17,25 +17,25 @@ from volumetools import volumeGradients, tfVectorFieldExp
 
 def __vnet_level__(in_layer, filters, config):
     if len(filters) == 1:
-        return Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(in_layer))
+        return Conv3D(filters=filters[0],kernel_size=3, padding='same',kernel_initializer='zeros')(LeakyReLU()(in_layer))
     else:
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(in_layer))
+        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same',kernel_initializer='zeros')(LeakyReLU()(in_layer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(tlayer))
+        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same',kernel_initializer='zeros')(LeakyReLU()(tlayer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
         down = MaxPool3D(pool_size=2)(tlayer)
 
         out_deeper = __vnet_level__(down,filters[1:],config)
-        up = Conv3D(filters[0], 3, padding='same')(LeakyReLU()(UpSampling3D(size=(2, 2, 2))(out_deeper)))
+        up = Conv3D(filters[0], 3, padding='same',kernel_initializer='zeros')(LeakyReLU()(UpSampling3D(size=(2, 2, 2))(out_deeper)))
 
         tlayer = Concatenate()([up,tlayer])
 
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(tlayer))
+        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same',kernel_initializer='zeros')(LeakyReLU()(tlayer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(tlayer))
+        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same',kernel_initializer='zeros')(LeakyReLU()(tlayer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
         return tlayer
@@ -119,7 +119,7 @@ def smoothness_loss(true_y,pred_y):
     dx = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,0],-1)))
     dy = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,1],-1)))
     dz = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,2],-1)))
-    return 1e-4*tf.reduce_sum(dx+dy+dz, axis=[1, 2, 3, 4])
+    return 1e-5*tf.reduce_sum(dx+dy+dz, axis=[1, 2, 3, 4])
 
 def sampleLoss(true_y,pred_y):
     z_mean = tf.expand_dims(pred_y[:,:,:,:,0],-1)
@@ -133,8 +133,8 @@ def create_model(config):
     x = Input(shape=input_shape)
     out = __vnet_level__(x,[32,32,32,64],config)
     # down-conv
-    mu = Conv3D(3,kernel_size=3, padding='same',activation="tanh")(out)
-    log_sigma = Conv3D(3,kernel_size=3, padding='same',activation="tanh")(out)
+    mu = Conv3D(3,kernel_size=3, padding='same',kernel_initializer='zeros',activation="tanh")(out)
+    log_sigma = Conv3D(3,kernel_size=3, padding='same',kernel_initializer='zeros', activation="tanh")(out)
     
     sampled_velocity_maps = Lambda(sampling,name="variationalVelocitySampling")([mu,log_sigma])
 
