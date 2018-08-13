@@ -13,7 +13,7 @@ import multiprocessing as mp
 
 #mp.set_start_method("spawn")
 train_config = {
-    'batchsize':1,
+    'batchsize':2,
     'split':0.9,
     'validation':0.1,
     'resolution':(96,96,96),

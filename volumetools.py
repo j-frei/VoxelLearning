@@ -48,7 +48,7 @@ def volumeGradients(tf_vf):
 
 
 def tfVectorFieldExp(grad, grid):
-    N = 7
+    N = 3
     shape = tf.shape(grid)
 
     id_x = tf.reshape(grid[:, :, :, :, 0], [shape[0], shape[1], shape[2], shape[3], 1])
