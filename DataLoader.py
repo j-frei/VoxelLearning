@@ -7,6 +7,9 @@ if socket.gethostname() == "JohannFrei-PC":
     oasis_path = "/mnt/hdd1/oasis1/out/OAS1_*_MR1"
 elif socket.gethostname() == "mango2gpu":
     oasis_path = "/data/johann/OASIS1/OAS1_*_MR1"
+elif socket.gethostname() == "09eae6835cdc":
+    oasis_path = "/data/johann/OASIS1/OAS1_*_MR1"
+
 else:
     oasis_path = "/data/Johann/johann_docker/OASIS1/OAS1_*_MR1"
 
