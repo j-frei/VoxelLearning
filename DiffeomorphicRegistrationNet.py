@@ -99,9 +99,9 @@ def toDisplacements(n_squaringScaling):
         _stacked = tf.tile(_grid,(tf.shape(grads)[0],1,1,1,1))
         grids = tf.reshape(_stacked,(tf.shape(grads)[0],tf.shape(grads)[1],tf.shape(grads)[2],tf.shape(grads)[3],3))
 
-        out = grads / 2.1
+        out = grads
         for i in range(n_squaringScaling):
-            out = tfVectorFieldExp(tf.identity(out),grids) + tf.identity(out)
+            out = tfVectorFieldExp(tf.identity(out),grids)
         return out
     return displacementWalk
 
