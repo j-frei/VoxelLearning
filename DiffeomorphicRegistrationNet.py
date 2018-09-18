@@ -10,32 +10,32 @@ from keras.layers import Conv3D, Conv3DTranspose, Dense, BatchNormalization, Inp
     MaxPool3D, K, Flatten, Reshape, Lambda, LeakyReLU
 from tensorflow.contrib.distributions import MultivariateNormalDiag as MultivariateNormal
 from tensorflow.python.ops.losses.util import add_loss
-
+import tensorflow as tf
 from dense_3D_spatial_transformer import Dense3DSpatialTransformer
 from losses import cc3D
-from volumetools import volumeGradients, tfVectorFieldExp
+from volumetools import volumeGradients, tfVectorFieldExp, remap3d
 
 def __vnet_level__(in_layer, filters, config):
     if len(filters) == 1:
-        return Conv3D(filters=filters[0],kernel_size=3, padding='same',kernel_initializer='zeros')(LeakyReLU()(in_layer))
+        return Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(in_layer))
     else:
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same',kernel_initializer='zeros')(LeakyReLU()(in_layer))
+        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(in_layer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same',kernel_initializer='zeros')(LeakyReLU()(tlayer))
+        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(tlayer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
         down = MaxPool3D(pool_size=2)(tlayer)
 
         out_deeper = __vnet_level__(down,filters[1:],config)
-        up = Conv3D(filters[0], 3, padding='same',kernel_initializer='zeros')(LeakyReLU()(UpSampling3D(size=(2, 2, 2))(out_deeper)))
+        up = Conv3D(filters[0], 3, padding='same')(LeakyReLU()(UpSampling3D(size=(2, 2, 2))(out_deeper)))
 
         tlayer = Concatenate()([up,tlayer])
 
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same',kernel_initializer='zeros')(LeakyReLU()(tlayer))
+        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(tlayer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same',kernel_initializer='zeros')(LeakyReLU()(tlayer))
+        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(tlayer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
         return tlayer
@@ -109,7 +109,8 @@ def toDisplacements(n_squaringScaling):
 def transformVolume(args):
     x,disp = args
     moving_vol = tf.reshape(x[:,:,:,:,1],(tf.shape(x)[0],tf.shape(x)[1],tf.shape(x)[2],tf.shape(x)[3],1))
-    transformed_volumes = Dense3DSpatialTransformer()([moving_vol,disp])
+    #transformed_volumes = Dense3DSpatialTransformer()([moving_vol,disp])
+    transformed_volumes = remap3d(moving_vol,disp)
     return transformed_volumes
 
 def empty_loss(true_y,pred_y):
@@ -131,10 +132,10 @@ def create_model(config):
     input_shape = (*config['resolution'][0:3],2)
 
     x = Input(shape=input_shape)
-    out = __vnet_level__(x,[32,32,32,64],config)
+    out = __vnet_level__(x,[32,32,64,64],config)
     # down-conv
-    mu = Conv3D(3,kernel_size=3, padding='same',kernel_initializer='zeros',activation="tanh")(out)
-    log_sigma = Conv3D(3,kernel_size=3, padding='same',kernel_initializer='zeros', activation="tanh")(out)
+    mu = Conv3D(3,kernel_size=3, padding='same')(out)
+    log_sigma = Conv3D(3,kernel_size=3, padding='same')(out)
     
     sampled_velocity_maps = Lambda(sampling,name="variationalVelocitySampling")([mu,log_sigma])
 
@@ -144,13 +145,13 @@ def create_model(config):
     #grads = Lambda(volumeGradients,name="gradients")(sampled_velocity_maps)
     grads = sampled_velocity_maps
 
-    disp = Lambda(toDisplacements(n_squaringScaling=5),name="manifold_walk")(grads)
+    disp = Lambda(toDisplacements(n_squaringScaling=1),name="manifold_walk")(grads)
 
     out = Lambda(transformVolume,name="img_warp")([x,disp])
 
     #loss = [empty_loss,cc3D(),empty_loss,empty_loss,empty_loss]
     loss = [empty_loss,cc3D(),smoothness_loss,sampleLoss]
-    lossWeights = [0,1.5,0.25,0.25]
+    lossWeights = [0,1.5,0,0.25]
     #model = Model(inputs=x,outputs=[disp,out,mu,log_sigma,gaussian_scale])
     model = Model(inputs=x,outputs=[disp,out,sampled_velocity_maps,z])
     model.compile(optimizer=Adam(lr=1e-4),loss=loss,loss_weights=lossWeights,metrics=['accuracy'])

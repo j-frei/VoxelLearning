@@ -13,7 +13,7 @@ import multiprocessing as mp
 
 #mp.set_start_method("spawn")
 train_config = {
-    'batchsize':2,
+    'batchsize':3,
     'split':0.9,
     'validation':0.1,
     'resolution':(96,96,96),
@@ -24,7 +24,7 @@ train_config = {
 
 training_elements = int(len(loadOASISData())*train_config['split']*(1-train_config['validation']))
 
-data_queue,processes = DataGenerator.stream(3,1,train_config)
+data_queue,processes = DataGenerator.stream(3,2,train_config)
 
 validation_data = DataGenerator.getValidationData(train_config)
 validation_data_y = DataGenerator.inferYFromBatch(validation_data,train_config)

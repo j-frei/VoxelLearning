@@ -35,7 +35,8 @@ def loadAtlas(config):
     atlas = readNormalizedVolumeByPath(atlas_path,config)
     atlas_mask = readNormalizedVolumeByPath(atlas_mask_path,config)
     # apply mask
-    return (atlas*(atlas_mask>0.5)).astype("float32")
+    #return (atlas*(atlas_mask>0.5)).astype("float32")
+    return atlas.astype("float32")
 
 def getBatches(*args):
     q,p_number,config = args
