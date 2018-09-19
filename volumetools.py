@@ -48,8 +48,8 @@ def volumeGradients(tf_vf):
 
 
 def remap3d(tf_in_vol, tf_offsets):
-    oy = tf_offsets[:, :, :, :, 0]
     ox = tf_offsets[:, :, :, :, 1]
+    oy = tf_offsets[:, :, :, :, 0]
     oz = tf_offsets[:, :, :, :, 2]
 
     offsets_swap = tf.squeeze(
@@ -61,7 +61,7 @@ def remap3d(tf_in_vol, tf_offsets):
 
 
 def tfVectorFieldExp(grad, grid):
-    N = 7
+    N = 4
     shapes = tf.shape(grad)
     batch_size, size_x, size_y, size_z, channels = shapes[0], shapes[1], shapes[2], shapes[3], shapes[4]
 

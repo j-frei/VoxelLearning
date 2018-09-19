@@ -30,13 +30,19 @@ def stream(n_elements,n_processes,config):
 
 
 def loadAtlas(config):
-    atlas_path = os.path.join(os.path.dirname(__file__),"atlas","icbm_avg_152_t1_tal_lin.nii")
-    atlas_mask_path = os.path.join(os.path.dirname(__file__),"atlas","icbm_avg_152_t1_tal_lin_mask.nii")
+    if config.get('atlas','') == "vm":
+        atlas_path = os.path.join(os.path.dirname(__file__),"atlas","atlas_norm_resampled.nii.gz")
+    else:
+        atlas_path = os.path.join(os.path.dirname(__file__),"atlas","icbm_avg_152_t1_tal_lin.nii")
     atlas = readNormalizedVolumeByPath(atlas_path,config)
-    atlas_mask = readNormalizedVolumeByPath(atlas_mask_path,config)
-    # apply mask
-    #return (atlas*(atlas_mask>0.5)).astype("float32")
-    return atlas.astype("float32")
+
+    if config.get('mask_atlas','') == "yes":
+        atlas_mask_path = os.path.join(os.path.dirname(__file__),"atlas","icbm_avg_152_t1_tal_lin_mask.nii")
+        atlas_mask = readNormalizedVolumeByPath(atlas_mask_path,config)
+        # apply mask
+        return (atlas*(atlas_mask>0.5)).astype("float32")
+    else:
+        return atlas.astype("float32")
 
 def getBatches(*args):
     q,p_number,config = args

@@ -13,12 +13,14 @@ import multiprocessing as mp
 
 #mp.set_start_method("spawn")
 train_config = {
-    'batchsize':3,
+    'batchsize':2,
     'split':0.9,
     'validation':0.1,
     'resolution':(96,96,96),
     'spacings':(2.,2.,2.),
     'epochs': 500,
+    'atlas': 'vm',
+    'mask_atlas':'yes',
     'model_output': 'model.pkl'
 }
 
@@ -42,7 +44,8 @@ tb_writers = [
     ("velocityFieldX","image",lambda dic: dic['pred'][2][:,:,:,:,0].reshape(dic['batchsize'],*train_config['resolution'])[:,:,:,int(train_config['resolution'][2]/2.)].astype("float32").reshape(dic['batchsize'],*train_config['resolution'][:2],1)),
     ("velocityFieldY","image",lambda dic: dic['pred'][2][:,:,:,:,1].reshape(dic['batchsize'],*train_config['resolution'])[:,:,:,int(train_config['resolution'][2]/2.)].astype("float32").reshape(dic['batchsize'],*train_config['resolution'][:2],1)),
     ("velocityFieldZ","image",lambda dic: dic['pred'][2][:,:,:,:,2].reshape(dic['batchsize'],*train_config['resolution'])[:,:,:,int(train_config['resolution'][2]/2.)].astype("float32").reshape(dic['batchsize'],*train_config['resolution'][:2],1)),
-    #("emb","text",lambda dic: "\n".join([ str(x) for x in dic['pred'][2:]]))
+    ("velo","text",lambda dic: "\n".join([ "min: {}\nmax: {}\nX:{}".format(x.min(),x.max(),x) for x in dic['pred'][2][2]])),
+    ("disp","text",lambda dic: "\n".join([ "min: {}\nmax: {}\nX:{}".format(x.min(),x.max(),x) for x in dic['pred'][0][2]]))
 ]
 
 model = create_model(train_config)

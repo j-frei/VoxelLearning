@@ -101,7 +101,7 @@ def toDisplacements(n_squaringScaling):
 
         out = grads
         for i in range(n_squaringScaling):
-            out = tfVectorFieldExp(tf.identity(out),grids)
+            out = out + tfVectorFieldExp(out,grids)
         return out
     return displacementWalk
 
@@ -151,7 +151,7 @@ def create_model(config):
 
     #loss = [empty_loss,cc3D(),empty_loss,empty_loss,empty_loss]
     loss = [empty_loss,cc3D(),smoothness_loss,sampleLoss]
-    lossWeights = [0,1.5,0,0.25]
+    lossWeights = [0,1.5,0.0001,0.025]
     #model = Model(inputs=x,outputs=[disp,out,mu,log_sigma,gaussian_scale])
     model = Model(inputs=x,outputs=[disp,out,sampled_velocity_maps,z])
     model.compile(optimizer=Adam(lr=1e-4),loss=loss,loss_weights=lossWeights,metrics=['accuracy'])
