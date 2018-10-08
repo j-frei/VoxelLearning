@@ -40,7 +40,7 @@ def volumeGradients(tf_vf):
             tf.reduce_min(unnormalized_tensor)
         )
     )
-    
+
     new_shape = np.array([-1, xaxis, yaxis, zaxis, 3], dtype=np.float32)
     return tf.map_fn(normalization, tf.reshape(array_ops.stack([dx, dy, dz], 4), new_shape))
     '''
@@ -84,9 +84,9 @@ def tfVectorFieldExp(grad, grid):
         cache_tf = tf.stack([dvx - id_x, dvy - id_y, dvz - id_z], 4)
         cache_tf = tf.reshape(cache_tf, [batch_size, size_x, size_y, size_z, 3])
 
-        dvx = remap3d(dvx, cache_tf)
-        dvy = remap3d(dvy, cache_tf)
-        dvz = remap3d(dvz, cache_tf)
+        dvx = remap3d(dvx, cache_tf) + tf.expand_dims(cache_tf[:,:,:,:,0],-1)
+        dvy = remap3d(dvy, cache_tf) + tf.expand_dims(cache_tf[:,:,:,:,1],-1)
+        dvz = remap3d(dvz, cache_tf) + tf.expand_dims(cache_tf[:,:,:,:,2],-1)
 
     ox = dvx - id_x
     oy = dvy - id_y

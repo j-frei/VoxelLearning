@@ -22,17 +22,13 @@ def __vnet_level__(in_layer, filters, config):
         tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(in_layer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(tlayer))
-        tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
-
-        down = MaxPool3D(pool_size=2)(tlayer)
+        down = Conv3D(filters=filters[0],kernel_size=3, strides=2, padding='same')(LeakyReLU()(tlayer))
+        down = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else down
 
         out_deeper = __vnet_level__(down,filters[1:],config)
-        up = Conv3D(filters[0], 3, padding='same')(LeakyReLU()(UpSampling3D(size=(2, 2, 2))(out_deeper)))
+        up = Conv3DTranspose(filters=filters[0],kernel_size=3,strides=2,padding='same')(LeakyReLU()(out_deeper))
 
         tlayer = Concatenate()([up,tlayer])
-
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(tlayer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
         tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(tlayer))
@@ -88,22 +84,17 @@ def samplingGaussian(args,n_gaussians,shape):
     res = tf.map_fn(sampleGaussian,elems=[z_mean,z_log_sigma,z_weights],dtype=tf.float32)
     return res
 
-def toDisplacements(n_squaringScaling):
-    def displacementWalk(args):
-        grads = args
-        height = K.shape(grads)[1]
-        width = K.shape(grads)[2]
-        depth = K.shape(grads)[3]
+def toDisplacements(args):
+    grads = args
+    height = K.shape(grads)[1]
+    width = K.shape(grads)[2]
+    depth = K.shape(grads)[3]
 
-        _grid = tf.reshape(tf.stack(_meshgrid(height,width,depth),-1),(1,height,width,depth,3))
-        _stacked = tf.tile(_grid,(tf.shape(grads)[0],1,1,1,1))
-        grids = tf.reshape(_stacked,(tf.shape(grads)[0],tf.shape(grads)[1],tf.shape(grads)[2],tf.shape(grads)[3],3))
+    _grid = tf.reshape(tf.stack(_meshgrid(height,width,depth),-1),(1,height,width,depth,3))
+    _stacked = tf.tile(_grid,(tf.shape(grads)[0],1,1,1,1))
+    grids = tf.reshape(_stacked,(tf.shape(grads)[0],tf.shape(grads)[1],tf.shape(grads)[2],tf.shape(grads)[3],3))
 
-        out = grads
-        for i in range(n_squaringScaling):
-            out = out + tfVectorFieldExp(out,grids)
-        return out
-    return displacementWalk
+    return tfVectorFieldExp(grads,grids)
 
 
 def transformVolume(args):
@@ -120,7 +111,7 @@ def smoothness_loss(true_y,pred_y):
     dx = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,0],-1)))
     dy = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,1],-1)))
     dz = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,2],-1)))
-    return 1e-5*tf.reduce_sum(dx+dy+dz, axis=[1, 2, 3, 4])
+    return 1e-5*tf.reduce_sum((dx+dy+dz)/(160*200*160*3), axis=[1, 2, 3, 4])
 
 def sampleLoss(true_y,pred_y):
     z_mean = tf.expand_dims(pred_y[:,:,:,:,0],-1)
@@ -132,27 +123,22 @@ def create_model(config):
     input_shape = (*config['resolution'][0:3],2)
 
     x = Input(shape=input_shape)
-    out = __vnet_level__(x,[32,32,64,64],config)
+    out = __vnet_level__(x,[8,16,32,32],config)
     # down-conv
-    mu = Conv3D(3,kernel_size=3, padding='same')(out)
+    mu = Conv3D(3,kernel_size=3, padding='same')(LeakyReLU()(out))
     log_sigma = Conv3D(3,kernel_size=3, padding='same')(out)
     
     sampled_velocity_maps = Lambda(sampling,name="variationalVelocitySampling")([mu,log_sigma])
 
-    #z = Lambda(lambda args: tf.stack([args[0],args[1]],axis=4), name='zVariationalLoss')([mu, log_sigma])
     z = Concatenate(name='zVariationalLoss')([mu, log_sigma])
-
-    #grads = Lambda(volumeGradients,name="gradients")(sampled_velocity_maps)
     grads = sampled_velocity_maps
 
-    disp = Lambda(toDisplacements(n_squaringScaling=1),name="manifold_walk")(grads)
+    disp = Lambda(toDisplacements,name="manifold_walk")(grads)
 
     out = Lambda(transformVolume,name="img_warp")([x,disp])
 
-    #loss = [empty_loss,cc3D(),empty_loss,empty_loss,empty_loss]
     loss = [empty_loss,cc3D(),smoothness_loss,sampleLoss]
-    lossWeights = [0,1.5,0.0001,0.025]
-    #model = Model(inputs=x,outputs=[disp,out,mu,log_sigma,gaussian_scale])
+    lossWeights = [0,1.5,0.1,0.2]
     model = Model(inputs=x,outputs=[disp,out,sampled_velocity_maps,z])
     model.compile(optimizer=Adam(lr=1e-4),loss=loss,loss_weights=lossWeights,metrics=['accuracy'])
     return model
