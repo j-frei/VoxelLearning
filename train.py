@@ -16,6 +16,7 @@ train_config = {
     'batchsize':1,
     'split':0.9,
     'validation':0.1,
+    'half_res':False,
     'epochs': 500,
     'atlas': 'atlas.nii.gz',
     'model_output': 'model.pkl',
@@ -23,7 +24,7 @@ train_config = {
 
 training_elements = int(len(loadOASISData())*train_config['split']*(1-train_config['validation']))
 
-data_queue,processes = DataGenerator.stream(3,2,train_config)
+data_queue,processes = DataGenerator.stream(2,1,train_config)
 
 validation_data = DataGenerator.getValidationData(train_config)
 validation_data_y = DataGenerator.inferYFromBatch(validation_data,train_config)

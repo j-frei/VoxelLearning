@@ -4,6 +4,22 @@ import numpy as np
 from keras.layers import K
 from dense_3D_spatial_transformer import Dense3DSpatialTransformer
 
+def meshgrid(height, width, depth):
+    x_t = tf.matmul(tf.ones(shape=tf.stack([height, 1])),
+                    tf.transpose(tf.expand_dims(tf.linspace(0.0,
+                                                            tf.cast(width, tf.float32)-1.0, width), 1), [1, 0]))
+    y_t = tf.matmul(tf.expand_dims(tf.linspace(0.0,
+                                               tf.cast(height, tf.float32)-1.0, height), 1),
+                    tf.ones(shape=tf.stack([1, width])))
+
+    x_t = tf.tile(tf.expand_dims(x_t, 2), [1, 1, depth])
+    y_t = tf.tile(tf.expand_dims(y_t, 2), [1, 1, depth])
+
+    z_t = tf.linspace(0.0, tf.cast(depth, tf.float32)-1.0, depth)
+    z_t = tf.expand_dims(tf.expand_dims(z_t, 0), 0)
+    z_t = tf.tile(z_t, [height, width, 1])
+
+    return x_t, y_t, z_t
 
 def volumeGradients(tf_vf):
     # batch_size, xaxis, yaxis, zaxis, depth = \
@@ -49,8 +65,12 @@ def volumeGradients(tf_vf):
 
 def remap3d(tf_in_vol, tf_offsets):
     ox = tf_offsets[:, :, :, :, 1]
-    oy = tf_offsets[:, :, :, :, 0]
-    oz = tf_offsets[:, :, :, :, 2]
+    oy = tf_offsets[:, :, :, :, 2]
+    oz = tf_offsets[:, :, :, :, 0]
+
+    #ox = tf_offsets[:, :, :, :, 1]
+    #oy = tf_offsets[:, :, :, :, 0]
+    #oz = tf_offsets[:, :, :, :, 2]
 
     offsets_swap = tf.squeeze(
         tf.stack([tf.expand_dims(ox, -1), tf.expand_dims(oy, -1), tf.expand_dims(oz, -1)], 4),
@@ -59,6 +79,27 @@ def remap3d(tf_in_vol, tf_offsets):
 
     return Dense3DSpatialTransformer()([tf_in_vol, offsets_swap])
 
+def upsampling_resample(velo):
+    size_x, size_y, size_z = velo.get_shape().as_list()[1:4]
+    grid_x, grid_y, grid_z = meshgrid(2*size_x,2*size_y,2*size_z)
+
+    id_x = tf.reshape(grid_x, [2*size_x, 2*size_y, 2*size_z])
+    id_y = tf.reshape(grid_y, [2*size_x, 2*size_y, 2*size_z])
+    id_z = tf.reshape(grid_z, [2*size_x, 2*size_y, 2*size_z])
+
+    id_x = tf.cast(id_x, 'float32')
+    id_y = tf.cast(id_y, 'float32')
+    id_z = tf.cast(id_z, 'float32')
+    id_x = tf.expand_dims(id_x/2-id_x, 0)
+    id_y = tf.expand_dims(id_y/2-id_y, 0)
+    id_z = tf.expand_dims(id_z/2-id_z, 0)
+    re_grid = tf.stack([id_x, id_y, id_z], -1)
+
+    stacked = tf.tile(re_grid,(tf.shape(velo)[0],1,1,1,1))
+    grids = tf.reshape(stacked,(tf.shape(velo)[0],2*size_x,2*size_y,2*size_z,3))
+
+    up_velo = remap3d(velo, grids)
+    return up_velo
 
 def tfVectorFieldExp(grad, grid):
     N = 4
@@ -84,9 +125,9 @@ def tfVectorFieldExp(grad, grid):
         cache_tf = tf.stack([dvx - id_x, dvy - id_y, dvz - id_z], 4)
         cache_tf = tf.reshape(cache_tf, [batch_size, size_x, size_y, size_z, 3])
 
-        dvx = remap3d(dvx, cache_tf) + tf.expand_dims(cache_tf[:,:,:,:,0],-1)
-        dvy = remap3d(dvy, cache_tf) + tf.expand_dims(cache_tf[:,:,:,:,1],-1)
-        dvz = remap3d(dvz, cache_tf) + tf.expand_dims(cache_tf[:,:,:,:,2],-1)
+        dvx = remap3d(dvx, cache_tf) #+ tf.expand_dims(cache_tf[:,:,:,:,0],-1)
+        dvy = remap3d(dvy, cache_tf) #+ tf.expand_dims(cache_tf[:,:,:,:,1],-1)
+        dvz = remap3d(dvz, cache_tf) #+ tf.expand_dims(cache_tf[:,:,:,:,2],-1)
 
     ox = dvx - id_x
     oy = dvy - id_y

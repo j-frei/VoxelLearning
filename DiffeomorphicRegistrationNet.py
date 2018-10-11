@@ -13,25 +13,27 @@ from tensorflow.python.ops.losses.util import add_loss
 import tensorflow as tf
 from dense_3D_spatial_transformer import Dense3DSpatialTransformer
 from losses import cc3D
-from volumetools import volumeGradients, tfVectorFieldExp, remap3d
+from volumetools import volumeGradients, tfVectorFieldExp, remap3d, meshgrid, upsampling_resample
 
-def __vnet_level__(in_layer, filters, config):
+def __vnet_level__(in_layer, filters, config,remove_last_conv=False):
     if len(filters) == 1:
-        return Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(in_layer))
+        return LeakyReLU()(Conv3D(filters=filters[0],kernel_size=3, padding='same')(in_layer))
     else:
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(in_layer))
+        tlayer = LeakyReLU()(Conv3D(filters=filters[0],kernel_size=3, padding='same')(in_layer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
-        down = Conv3D(filters=filters[0],kernel_size=3, strides=2, padding='same')(LeakyReLU()(tlayer))
+        down = LeakyReLU()(Conv3D(filters=filters[0],kernel_size=3, strides=2, padding='same')(tlayer))
         down = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else down
 
         out_deeper = __vnet_level__(down,filters[1:],config)
-        up = Conv3DTranspose(filters=filters[0],kernel_size=3,strides=2,padding='same')(LeakyReLU()(out_deeper))
+        if remove_last_conv:
+            return out_deeper
+        up = LeakyReLU()(Conv3DTranspose(filters=filters[0],kernel_size=3,strides=2,padding='same')(out_deeper))
 
         tlayer = Concatenate()([up,tlayer])
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
-        tlayer = Conv3D(filters=filters[0],kernel_size=3, padding='same')(LeakyReLU()(tlayer))
+        tlayer = LeakyReLU()(Conv3D(filters=filters[0],kernel_size=3, padding='same')(tlayer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
 
         return tlayer
@@ -45,27 +47,9 @@ def sampling(args):
     xout = z_mean + K.exp(z_log_sigma) * epsilon
     return xout
 
-def _meshgrid(height, width, depth):
-    x_t = tf.matmul(tf.ones(shape=tf.stack([height, 1])),
-                    tf.transpose(tf.expand_dims(tf.linspace(0.0,
-                                                            tf.cast(width, tf.float32)-1.0, width), 1), [1, 0]))
-    y_t = tf.matmul(tf.expand_dims(tf.linspace(0.0,
-                                               tf.cast(height, tf.float32)-1.0, height), 1),
-                    tf.ones(shape=tf.stack([1, width])))
-
-    x_t = tf.tile(tf.expand_dims(x_t, 2), [1, 1, depth])
-    y_t = tf.tile(tf.expand_dims(y_t, 2), [1, 1, depth])
-
-    z_t = tf.linspace(0.0, tf.cast(depth, tf.float32)-1.0, depth)
-    z_t = tf.expand_dims(tf.expand_dims(z_t, 0), 0)
-    z_t = tf.tile(z_t, [height, width, 1])
-
-    return x_t, y_t, z_t
-
-
 def samplingGaussian(args,n_gaussians,shape):
     z_mean, z_log_sigma,z_weights = args
-    gx,gy,gz = _meshgrid(shape[0],shape[1],shape[2])
+    gx,gy,gz = meshgrid(shape[0],shape[1],shape[2])
     grid = tf.stack([gx,gy,gz],-1)
 
 
@@ -90,11 +74,15 @@ def toDisplacements(args):
     width = K.shape(grads)[2]
     depth = K.shape(grads)[3]
 
-    _grid = tf.reshape(tf.stack(_meshgrid(height,width,depth),-1),(1,height,width,depth,3))
+    _grid = tf.reshape(tf.stack(meshgrid(height,width,depth),-1),(1,height,width,depth,3))
     _stacked = tf.tile(_grid,(tf.shape(grads)[0],1,1,1,1))
     grids = tf.reshape(_stacked,(tf.shape(grads)[0],tf.shape(grads)[1],tf.shape(grads)[2],tf.shape(grads)[3],3))
 
     return tfVectorFieldExp(grads,grids)
+
+def toUpscaleResampled(args):
+    velo = args
+    return upsampling_resample(velo)
 
 
 def transformVolume(args):
@@ -123,12 +111,16 @@ def create_model(config):
     input_shape = (*config['resolution'][0:3],2)
 
     x = Input(shape=input_shape)
-    out = __vnet_level__(x,[8,16,32,32],config)
+    out = __vnet_level__(x,[8,8],config,config['half_res'])
     # down-conv
-    mu = Conv3D(3,kernel_size=3, padding='same')(LeakyReLU()(out))
+    mu = Conv3D(3,kernel_size=3, padding='same')(out)
     log_sigma = Conv3D(3,kernel_size=3, padding='same')(out)
     
-    sampled_velocity_maps = Lambda(sampling,name="variationalVelocitySampling")([mu,log_sigma])
+    if config['half_res']:
+        sampled_velocity_maps = Lambda(sampling)([mu,log_sigma])
+        sampled_velocity_maps = Lambda(toUpscaleResampled,name="variationalVelocitySampling")(sampled_velocity_maps)
+    else:
+        sampled_velocity_maps = Lambda(sampling,name="variationalVelocitySampling")([mu,log_sigma])
 
     z = Concatenate(name='zVariationalLoss')([mu, log_sigma])
     grads = sampled_velocity_maps
