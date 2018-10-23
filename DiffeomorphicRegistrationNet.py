@@ -13,7 +13,7 @@ from tensorflow.python.ops.losses.util import add_loss
 import tensorflow as tf
 from dense_3D_spatial_transformer import Dense3DSpatialTransformer
 from losses import cc3D
-from volumetools import volumeGradients, tfVectorFieldExp, remap3d, meshgrid, upsampling_resample
+from volumetools import volumeGradients, tfVectorFieldExp, remap3d, meshgrid, upsample
 
 def __vnet_level__(in_layer, filters, config,remove_last_conv=False):
     if len(filters) == 1:
@@ -47,27 +47,6 @@ def sampling(args):
     xout = z_mean + K.exp(z_log_sigma) * epsilon
     return xout
 
-def samplingGaussian(args,n_gaussians,shape):
-    z_mean, z_log_sigma,z_weights = args
-    gx,gy,gz = meshgrid(shape[0],shape[1],shape[2])
-    grid = tf.stack([gx,gy,gz],-1)
-
-
-    def sampleGaussian(inputs):
-        sampled = tf.zeros(shape=(shape[0],shape[1],shape[2],1))
-        mu,sig,w = inputs
-        dims = np.asarray(shape[0:3])/2.
-
-        for i in range(n_gaussians):
-            dis = MultivariateNormal(loc=(mu[i]/dims)+dims,scale_identity_multiplier=sig[i]*np.max(dims))
-            sam = w[i]*K.expand_dims(dis.prob(grid),-1)
-            sampled = tf.add(tf.identity(sampled),sam)
-
-        return sampled
-
-    res = tf.map_fn(sampleGaussian,elems=[z_mean,z_log_sigma,z_weights],dtype=tf.float32)
-    return res
-
 def toDisplacements(args):
     grads = args
     height = K.shape(grads)[1]
@@ -81,9 +60,7 @@ def toDisplacements(args):
     return tfVectorFieldExp(grads,grids)
 
 def toUpscaleResampled(args):
-    velo = args
-    return upsampling_resample(velo)
-
+    return upsample(velo)
 
 def transformVolume(args):
     x,disp = args
@@ -99,7 +76,7 @@ def smoothness_loss(true_y,pred_y):
     dx = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,0],-1)))
     dy = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,1],-1)))
     dz = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,2],-1)))
-    return 1e-5*tf.reduce_sum((dx+dy+dz)/(160*200*160*3), axis=[1, 2, 3, 4])
+    return 1e-4*tf.reduce_sum((dx+dy+dz)/functools.reduce(lambda x,y:x*y,K.int_shape(pred_y)[1:4]+[3]), axis=[1, 2, 3, 4])
 
 def sampleLoss(true_y,pred_y):
     z_mean = tf.expand_dims(pred_y[:,:,:,:,0],-1)
@@ -111,26 +88,28 @@ def create_model(config):
     input_shape = (*config['resolution'][0:3],2)
 
     x = Input(shape=input_shape)
-    out = __vnet_level__(x,[8,8],config,config['half_res'])
+    out = __vnet_level__(x,[16,32,32],config,remove_last_conv=config['half_res'])
     # down-conv
     mu = Conv3D(3,kernel_size=3, padding='same')(out)
-    log_sigma = Conv3D(3,kernel_size=3, padding='same')(out)
+    log_sigma = Conv3D(3,kernel_size=3, padding='same')(out)    
     
-    if config['half_res']:
-        sampled_velocity_maps = Lambda(sampling)([mu,log_sigma])
-        sampled_velocity_maps = Lambda(toUpscaleResampled,name="variationalVelocitySampling")(sampled_velocity_maps)
-    else:
-        sampled_velocity_maps = Lambda(sampling,name="variationalVelocitySampling")([mu,log_sigma])
+    sampled_velocity_maps = Lambda(sampling,name="variationalVelocitySampling")([mu,log_sigma])
 
     z = Concatenate(name='zVariationalLoss')([mu, log_sigma])
     grads = sampled_velocity_maps
 
-    disp = Lambda(toDisplacements,name="manifold_walk")(grads)
+    if config['half_res']:
+        disp_low = Lambda(toDisplacements)(grads)
+        # upsample displacement map
+        disp = Lambda(toUpscaleResampled,name="manifold_walk")(disp_low)
+    else:
+        disp = Lambda(toDisplacements,name="manifold_walk")(grads)
+        
 
-    out = Lambda(transformVolume,name="img_warp")([x,disp])
+    warped = Lambda(transformVolume,name="img_warp")([x,disp])
 
     loss = [empty_loss,cc3D(),smoothness_loss,sampleLoss]
-    lossWeights = [0,1.5,0.1,0.2]
-    model = Model(inputs=x,outputs=[disp,out,sampled_velocity_maps,z])
+    lossWeights = [0,1.0,0.2,0.2]
+    model = Model(inputs=x,outputs=[disp,warped,sampled_velocity_maps,z])
     model.compile(optimizer=Adam(lr=1e-4),loss=loss,loss_weights=lossWeights,metrics=['accuracy'])
     return model

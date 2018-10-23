@@ -14,7 +14,7 @@ class Logger(Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         # how many images do we want to store?
-        use_batch_size = 5
+        use_batch_size = 1
 
         # validation_data = [input,output0,output1,...weights...]
         payload = {}
