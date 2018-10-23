@@ -60,7 +60,7 @@ def toDisplacements(args):
     return tfVectorFieldExp(grads,grids)
 
 def toUpscaleResampled(args):
-    return upsample(velo)
+    return upsample(args)
 
 def transformVolume(args):
     x,disp = args
@@ -92,7 +92,7 @@ def create_model(config):
     # down-conv
     mu = Conv3D(3,kernel_size=3, padding='same')(out)
     log_sigma = Conv3D(3,kernel_size=3, padding='same')(out)    
-    
+
     sampled_velocity_maps = Lambda(sampling,name="variationalVelocitySampling")([mu,log_sigma])
 
     z = Concatenate(name='zVariationalLoss')([mu, log_sigma])
@@ -104,7 +104,6 @@ def create_model(config):
         disp = Lambda(toUpscaleResampled,name="manifold_walk")(disp_low)
     else:
         disp = Lambda(toDisplacements,name="manifold_walk")(grads)
-        
 
     warped = Lambda(transformVolume,name="img_warp")([x,disp])
 
