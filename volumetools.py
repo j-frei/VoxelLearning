@@ -47,6 +47,7 @@ def tfVectorFieldExp(grad, grid):
 
 def upsample(tf_in_vol):
     batch_size = tf.shape(tf_in_vol)[0]
+    x,y,z = K.int_shape(tf_in_vol)[1:4]
     xs_low = -1.*tf.linspace(0.,x-1.,x) / 2. - 0.50
     ys_low = -1.*tf.linspace(0.,y-1.,y) / 2. - 0.50
     # Why is the z-axis not shifted by 0.5?!
