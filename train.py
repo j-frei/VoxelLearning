@@ -2,7 +2,7 @@ import numpy as np
 from keras.callbacks import TensorBoard, ModelCheckpoint
 import tensorflow as tf
 import keras
-import logging
+import logging, os
 import DataGenerator
 from DataLoader import loadOASISData
 from DiffeomorphicRegistrationNet import create_model
