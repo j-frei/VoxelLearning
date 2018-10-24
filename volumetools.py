@@ -11,10 +11,11 @@ def remap3d(tf_in_vol, tf_offsets):
                                         tf.transpose(tf_offsets,perm=[0,2,1,3,4])])
     return tf.transpose(transformed,perm=[0,2,1,3,4])
 
-def tfVectorFieldExp(grad, grid):
-    N = 7
+def tfVectorFieldExp(grad, grid,n_steps):
+    N = n_steps
+
     shapes = tf.shape(grad)
-    batch_size, size_x, size_y, size_z, channels = shapes[0], shapes[1], shapes[2], shapes[3], shapes[4]
+    batch_size, size_x, size_y, size_z, channels = shapes[0], *K.int_shape(grad)[1:5]
 
     id_x = tf.reshape(grid[:, :, :, :, 0], [batch_size, size_x, size_y, size_z, 1])
     id_y = tf.reshape(grid[:, :, :, :, 1], [batch_size, size_x, size_y, size_z, 1])
@@ -47,7 +48,8 @@ def tfVectorFieldExp(grad, grid):
 
 def upsample(tf_in_vol):
     batch_size = tf.shape(tf_in_vol)[0]
-    x,y,z = K.int_shape(tf_in_vol)[1:4]
+    x,y,z = tf_in_vol.get_shape().as_list()[1:4]
+
     xs_low = -1.*tf.linspace(0.,x-1.,x) / 2. - 0.50
     ys_low = -1.*tf.linspace(0.,y-1.,y) / 2. - 0.50
     # Why is the z-axis not shifted by 0.5?!
@@ -88,12 +90,13 @@ def upsample(tf_in_vol):
 
     # 1x final quader
     result = tf.concat([low_z,high_z],axis=3)
-    
+    result = tf.reshape(result,[batch_size,x*2,y*2,z*2,1])
+
     return result
 
 def volumeGradients(tf_vf):
     # batch_size, xaxis, yaxis, zaxis, depth = \
-    shapes = tf.shape(tf_vf)
+    shapes = (tf.shape(tf_vf)[0],*K.int_shape(tf_vf)[1:])
     # batch_size = tf.placeholder("float",shape=None)
     dx = tf_vf[:, 1:, :, :, :] - tf_vf[:, :-1, :, :, :]
     dy = tf_vf[:, :, 1:, :, :] - tf_vf[:, :, :-1, :, :]
@@ -115,36 +118,4 @@ def volumeGradients(tf_vf):
     dz = array_ops.concat([dz, array_ops.zeros(shape, tf_vf.dtype)], 3)
     dz = array_ops.reshape(dz, tf.shape(tf_vf))
 
-    '''
-    normalization = lambda unnormalized_tensor: tf.div(
-        tf.subtract(
-            unnormalized_tensor,
-            tf.reduce_min(unnormalized_tensor)
-        ),
-        tf.subtract(
-            tf.reduce_max(unnormalized_tensor),
-            tf.reduce_min(unnormalized_tensor)
-        )
-    )
-
-    new_shape = np.array([-1, xaxis, yaxis, zaxis, 3], dtype=np.float32)
-    return tf.map_fn(normalization, tf.reshape(array_ops.stack([dx, dy, dz], 4), new_shape))
-    '''
     return tf.reshape(array_ops.stack([dx, dy, dz], 4), [shapes[0], shapes[1], shapes[2], shapes[3], 3])
-
-def meshgrid(height, width, depth):
-    x_t = tf.matmul(tf.ones(shape=tf.stack([height, 1])),
-                    tf.transpose(tf.expand_dims(tf.linspace(0.0,
-                                                            tf.cast(width, tf.float32)-1.0, width), 1), [1, 0]))
-    y_t = tf.matmul(tf.expand_dims(tf.linspace(0.0,
-                                               tf.cast(height, tf.float32)-1.0, height), 1),
-                    tf.ones(shape=tf.stack([1, width])))
-
-    x_t = tf.tile(tf.expand_dims(x_t, 2), [1, 1, depth])
-    y_t = tf.tile(tf.expand_dims(y_t, 2), [1, 1, depth])
-
-    z_t = tf.linspace(0.0, tf.cast(depth, tf.float32)-1.0, depth)
-    z_t = tf.expand_dims(tf.expand_dims(z_t, 0), 0)
-    z_t = tf.tile(z_t, [height, width, 1])
-
-    return x_t, y_t, z_t

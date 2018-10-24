@@ -88,13 +88,17 @@ def getTestData(config):
     return test
 
 def inferYFromBatch(batch,config):
+    velo_res = config['resolution']
+    if config['half_res']:
+        velo_res = [ int(axis / 2) for axis in velo_res]
     y = [
+        # displacement field at full resolution
         np.asarray([ np.zeros(shape=(*config['resolution'], 3)).astype(np.float32) for _ in range(len(batch)) ]),
+        # warped moving image
         np.asarray([ volumes[:,:,:,0].reshape(*config['resolution'], 1) for volumes in batch ]),
-        np.asarray([np.zeros(shape=(*config['resolution'], 2)).astype(np.float32) for _ in range(len(batch))]),
-        np.asarray([np.zeros(shape=(*config['resolution'], 3)).astype(np.float32) for _ in range(len(batch))]),
-    #    np.asarray([ [[0., 0., 0.] for _ in range(20)] for _ in range(len(batch))]).reshape(len(batch), 20, 3),
-    #    np.asarray([ [0. for _ in range(20)] for _ in range(len(batch))]).reshape(len(batch), 20, 1),
-    #    np.asarray([ [0. for _ in range(20)] for _ in range(len(batch))]).reshape(len(batch), 20, 1),
+        # velocity maps
+        np.asarray([np.zeros(shape=(*velo_res, 3)).astype(np.float32) for _ in range(len(batch))]),
+        # mean, sigma pair
+        np.asarray([np.zeros(shape=(*velo_res, 2)).astype(np.float32) for _ in range(len(batch))]),
     ]
     return y

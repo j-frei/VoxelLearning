@@ -20,6 +20,7 @@ train_config = {
     'epochs': 200,
     'atlas': 'atlas.nii.gz',
     'model_output': 'model.pkl',
+    'exponentialSteps': 7,
 }
 
 training_elements = int(len(loadOASISData())*train_config['split']*(1-train_config['validation']))

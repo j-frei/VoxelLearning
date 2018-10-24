@@ -13,7 +13,7 @@ from tensorflow.python.ops.losses.util import add_loss
 import tensorflow as tf
 from dense_3D_spatial_transformer import Dense3DSpatialTransformer
 from losses import cc3D
-from volumetools import volumeGradients, tfVectorFieldExp, remap3d, meshgrid, upsample
+from volumetools import volumeGradients, tfVectorFieldExp, remap3d, upsample
 
 def __vnet_level__(in_layer, filters, config,remove_last_conv=False):
     if len(filters) == 1:
@@ -47,25 +47,39 @@ def sampling(args):
     xout = z_mean + K.exp(z_log_sigma) * epsilon
     return xout
 
-def toDisplacements(args):
-    grads = args
-    height = K.shape(grads)[1]
-    width = K.shape(grads)[2]
-    depth = K.shape(grads)[3]
+def toDisplacements(steps=7):
+    def exponentialMap(args):
+        grads = args
+        x,y,z = K.int_shape(args)[1:4]
 
-    _grid = tf.reshape(tf.stack(meshgrid(height,width,depth),-1),(1,height,width,depth,3))
-    _stacked = tf.tile(_grid,(tf.shape(grads)[0],1,1,1,1))
-    grids = tf.reshape(_stacked,(tf.shape(grads)[0],tf.shape(grads)[1],tf.shape(grads)[2],tf.shape(grads)[3],3))
+        # ij indexing doesn't change (x,y,z) to (y,x,z)
+        grid = tf.expand_dims(tf.stack(tf.meshgrid(
+            tf.linspace(0.,x-1.,x),
+            tf.linspace(0.,y-1.,y),
+            tf.linspace(0.,z-1.,z)
+            ,indexing='ij'),-1),
+        0)
 
-    return tfVectorFieldExp(grads,grids)
+        # replicate along batch size
+        stacked_grids = tf.tile(grid,(tf.shape(grads)[0],1,1,1,1))
+
+        res = tfVectorFieldExp(grads,stacked_grids,n_steps=steps)
+        return res
+    return exponentialMap
 
 def toUpscaleResampled(args):
-    return upsample(args)
+    channel_x = args[:,:,:,:,0]
+    channel_y = args[:,:,:,:,1]
+    channel_z = args[:,:,:,:,2]
+    upsampled_x = upsample(tf.expand_dims(channel_x,-1))
+    upsampled_y = upsample(tf.expand_dims(channel_y,-1))
+    upsampled_z = upsample(tf.expand_dims(channel_z,-1))
+    result = tf.squeeze(tf.stack([upsampled_x,upsampled_y,upsampled_z],4),5)
+    return result
 
 def transformVolume(args):
     x,disp = args
     moving_vol = tf.reshape(x[:,:,:,:,1],(tf.shape(x)[0],tf.shape(x)[1],tf.shape(x)[2],tf.shape(x)[3],1))
-    #transformed_volumes = Dense3DSpatialTransformer()([moving_vol,disp])
     transformed_volumes = remap3d(moving_vol,disp)
     return transformed_volumes
 
@@ -76,7 +90,8 @@ def smoothness_loss(true_y,pred_y):
     dx = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,0],-1)))
     dy = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,1],-1)))
     dz = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,2],-1)))
-    return 1e-4*tf.reduce_sum((dx+dy+dz)/functools.reduce(lambda x,y:x*y,K.int_shape(pred_y)[1:4]+[3]), axis=[1, 2, 3, 4])
+
+    return tf.reduce_sum((dx+dy+dz)/functools.reduce(lambda x,y:x*y,K.int_shape(pred_y)[1:5]), axis=[1, 2, 3, 4])
 
 def sampleLoss(true_y,pred_y):
     z_mean = tf.expand_dims(pred_y[:,:,:,:,0],-1)
@@ -99,7 +114,7 @@ def create_model(config):
     grads = sampled_velocity_maps
 
     if config['half_res']:
-        disp_low = Lambda(toDisplacements)(grads)
+        disp_low = Lambda(toDisplacements(steps=config['exponentialSteps']))(grads)
         # upsample displacement map
         disp = Lambda(toUpscaleResampled,name="manifold_walk")(disp_low)
     else:
@@ -108,7 +123,14 @@ def create_model(config):
     warped = Lambda(transformVolume,name="img_warp")([x,disp])
 
     loss = [empty_loss,cc3D(),smoothness_loss,sampleLoss]
-    lossWeights = [0,1.0,0.2,0.2]
+    lossWeights = [0.,
+                   # data term / CC
+                   1.0,
+                   # smoothness
+                   0.002,
+                   # loglikelihood
+                   0.2
+                   ]
     model = Model(inputs=x,outputs=[disp,warped,sampled_velocity_maps,z])
     model.compile(optimizer=Adam(lr=1e-4),loss=loss,loss_weights=lossWeights,metrics=['accuracy'])
     return model
