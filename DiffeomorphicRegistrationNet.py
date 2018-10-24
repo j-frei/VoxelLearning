@@ -86,12 +86,14 @@ def transformVolume(args):
 def empty_loss(true_y,pred_y):
     return tf.constant(0.,dtype=tf.float32)
 
-def smoothness_loss(true_y,pred_y):
-    dx = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,0],-1)))
-    dy = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,1],-1)))
-    dz = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,2],-1)))
+def smoothness(batch_size):
+    def smoothness_loss(true_y,pred_y):
+        dx = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,0],-1)))
+        dy = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,1],-1)))
+        dz = tf.abs(volumeGradients(tf.expand_dims(pred_y[:,:,:,:,2],-1)))
 
-    return tf.reduce_sum((dx+dy+dz)/functools.reduce(lambda x,y:x*y,K.int_shape(pred_y)[1:5]), axis=[1, 2, 3, 4])
+        return tf.reduce_sum((dx+dy+dz)/(functools.reduce(lambda x,y:x*y,K.int_shape(pred_y)[1:5])*batch_size), axis=[1, 2, 3, 4])
+    return smoothness_loss
 
 def sampleLoss(true_y,pred_y):
     z_mean = tf.expand_dims(pred_y[:,:,:,:,0],-1)
@@ -124,7 +126,7 @@ def create_model(config):
 
     warped = Lambda(transformVolume,name="img_warp")([x,disp])
 
-    loss = [empty_loss,cc3D(),smoothness_loss,sampleLoss]
+    loss = [empty_loss,cc3D(),smoothness(config['batchsize']),sampleLoss]
     lossWeights = [0.,
                    # data term / CC
                    1.0,
