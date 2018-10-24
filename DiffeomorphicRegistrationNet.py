@@ -116,7 +116,9 @@ def create_model(config):
     if config['half_res']:
         disp_low = Lambda(toDisplacements(steps=config['exponentialSteps']))(grads)
         # upsample displacement map
-        disp = Lambda(toUpscaleResampled,name="manifold_walk")(disp_low)
+        disp_upsampled = Lambda(toUpscaleResampled)(disp_low)
+        # we need to fix displacement vectors which are too small after upsampling
+        disp = Lambda(lambda dispMap: tf.scalar_mul(2.,dispMap),name="manifold_walk")
     else:
         disp = Lambda(toDisplacements,name="manifold_walk")(grads)
 
