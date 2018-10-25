@@ -120,7 +120,7 @@ def create_model(config):
         # upsample displacement map
         disp_upsampled = Lambda(toUpscaleResampled)(disp_low)
         # we need to fix displacement vectors which are too small after upsampling
-        disp = Lambda(lambda dispMap: tf.scalar_mul(2.,dispMap),name="manifold_walk")
+        disp = Lambda(lambda dispMap: tf.scalar_mul(2.,dispMap),name="manifold_walk")(disp_upsampled)
     else:
         disp = Lambda(toDisplacements,name="manifold_walk")(grads)
 
