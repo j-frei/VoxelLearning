@@ -13,7 +13,7 @@ from tensorflow.python.ops.losses.util import add_loss
 import tensorflow as tf
 from dense_3D_spatial_transformer import Dense3DSpatialTransformer
 from losses import cc3D
-from volumetools import volumeGradients, tfVectorFieldExp, remap3d, upsample
+from volumetools import volumeGradients, tfVectorFieldExp, remap3d, upsample, invertDisplacements
 
 def __vnet_level__(in_layer, filters, config,remove_last_conv=False):
     if len(filters) == 1:
@@ -55,7 +55,7 @@ def toDisplacements(steps=7):
         # clip too large values:
         v_max = 0.5 * (2**steps)
         v_min = -v_max
-        velo = tf.clip_by_value(velo,v_min,v_max)
+        velo = tf.clip_by_value(velo_raw,v_min,v_max)
 
         # ij indexing doesn't change (x,y,z) to (y,x,z)
         grid = tf.expand_dims(tf.stack(tf.meshgrid(
