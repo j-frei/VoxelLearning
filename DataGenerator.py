@@ -100,5 +100,7 @@ def inferYFromBatch(batch,config):
         np.asarray([np.zeros(shape=(*velo_res, 3)).astype(np.float32) for _ in range(len(batch))]),
         # mean, sigma pair
         np.asarray([np.zeros(shape=(*velo_res, 2)).astype(np.float32) for _ in range(len(batch))]),
+        # warped atlas image
+        np.asarray([ volumes[:,:,:,1].reshape(*config['resolution'], 1) for volumes in batch ]),
     ]
     return y

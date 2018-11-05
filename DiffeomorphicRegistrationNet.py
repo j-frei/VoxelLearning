@@ -49,8 +49,13 @@ def sampling(args):
 
 def toDisplacements(steps=7):
     def exponentialMap(args):
-        grads = args
+        velo_raw = args
         x,y,z = K.int_shape(args)[1:4]
+
+        # clip too large values:
+        v_max = 0.5 * (2**steps)
+        v_min = -v_max
+        velo = tf.clip_by_value(velo,v_min,v_max)
 
         # ij indexing doesn't change (x,y,z) to (y,x,z)
         grid = tf.expand_dims(tf.stack(tf.meshgrid(
@@ -61,9 +66,9 @@ def toDisplacements(steps=7):
         0)
 
         # replicate along batch size
-        stacked_grids = tf.tile(grid,(tf.shape(grads)[0],1,1,1,1))
+        stacked_grids = tf.tile(grid,(tf.shape(velo)[0],1,1,1,1))
 
-        res = tfVectorFieldExp(grads,stacked_grids,n_steps=steps)
+        res = tfVectorFieldExp(velo,stacked_grids,n_steps=steps)
         return res
     return exponentialMap
 
@@ -82,6 +87,13 @@ def transformVolume(args):
     moving_vol = tf.reshape(x[:,:,:,:,1],(tf.shape(x)[0],tf.shape(x)[1],tf.shape(x)[2],tf.shape(x)[3],1))
     transformed_volumes = remap3d(moving_vol,disp)
     return transformed_volumes
+
+def transformAtlas(args):
+    x,disp = args
+    inv_disp = invertDisplacements(disp)
+    moving_vol = tf.reshape(x[:,:,:,:,0],(tf.shape(x)[0],tf.shape(x)[1],tf.shape(x)[2],tf.shape(x)[3],1))
+    transformed_atlas = remap3d(moving_vol,inv_disp)
+    return transformed_atlas
 
 def empty_loss(true_y,pred_y):
     return tf.constant(0.,dtype=tf.float32)
@@ -108,7 +120,7 @@ def create_model(config):
     out = __vnet_level__(x,[16,32,32],config,remove_last_conv=config['half_res'])
     # down-conv
     mu = Conv3D(3,kernel_size=3, padding='same')(out)
-    log_sigma = Conv3D(3,kernel_size=3, padding='same')(out)    
+    log_sigma = Conv3D(3,kernel_size=3, padding='same')(out)
 
     sampled_velocity_maps = Lambda(sampling,name="variationalVelocitySampling")([mu,log_sigma])
 
@@ -125,16 +137,19 @@ def create_model(config):
         disp = Lambda(toDisplacements,name="manifold_walk")(grads)
 
     warped = Lambda(transformVolume,name="img_warp")([x,disp])
+    warpedAtlas = Lambda(transformAtlas,name="atlas_warp")([x,disp])
 
-    loss = [empty_loss,cc3D(),smoothness(config['batchsize']),sampleLoss]
+    loss = [empty_loss,cc3D(),smoothness(config['batchsize']),sampleLoss,cc3D()]
     lossWeights = [0.,
                    # data term / CC
                    1.0,
                    # smoothness
-                   0.002,
+                   0.000002,
                    # loglikelihood
-                   0.2
+                   0.2,
+                   # data term / CC atlas warp
+                   1.0
                    ]
-    model = Model(inputs=x,outputs=[disp,warped,sampled_velocity_maps,z])
+    model = Model(inputs=x,outputs=[disp,warped,sampled_velocity_maps,z,warpedAtlas])
     model.compile(optimizer=Adam(lr=1e-4),loss=loss,loss_weights=lossWeights,metrics=['accuracy'])
     return model

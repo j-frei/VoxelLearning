@@ -94,6 +94,31 @@ def upsample(tf_in_vol):
 
     return result
 
+def invertDisplacements(args):
+    x,y,z = K.int_shape(args)[1:4]
+    disp = args
+
+    # ij indexing doesn't change (x,y,z) to (y,x,z)
+    grid = tf.expand_dims(tf.stack(tf.meshgrid(
+        tf.linspace(0.,x-1.,x),
+        tf.linspace(0.,y-1.,y),
+        tf.linspace(0.,z-1.,z)
+        ,indexing='ij'),-1),
+    0)
+
+    # replicate along batch size
+    stacked_grids = tf.tile(grid,(tf.shape(args)[0],1,1,1,1))
+    print(stacked_grids.shape)
+    grids = [tf.expand_dims(stacked_grids[:,:,:,:,i],4) for i in range(3)]
+    print(grids[0].shape)
+    displaced_grids = [remap3d(subgrid,disp) for subgrid in grids]
+    print(displaced_grids[0].shape)
+    inverted_grids = [ g-disp_g for g,disp_g in zip(grids,displaced_grids)]
+    print(inverted_grids[0].shape)
+    inverted_grid = tf.stack([tf.squeeze(inverted_grids[i],4) for i in range(3)],4)
+    print(inverted_grid.shape)
+    return inverted_grid
+
 def volumeGradients(tf_vf):
     # batch_size, xaxis, yaxis, zaxis, depth = \
     shapes = (tf.shape(tf_vf)[0],*K.int_shape(tf_vf)[1:])
