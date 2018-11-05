@@ -64,7 +64,7 @@ with sess.as_default():
                         validation_data=[validation_data,validation_data_y],
                         epochs=train_config['epochs'],
                         steps_per_epoch=int(training_elements/train_config['batchsize']),
-                        callbacks=[tb,Logger(tb_logs=tb_writers),ModelCheckpoint(cp_models_path)]
+                        callbacks=[tb,Logger(tb_logs=tb_writers),ModelCheckpoint(cp_models_path,save_best_only=True)]
                         )
     model.save(train_config['model_output'])
 
