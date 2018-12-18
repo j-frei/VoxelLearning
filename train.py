@@ -27,7 +27,7 @@ train_config = {
 
 training_elements = int(len(loadOASISData())*train_config['split']*(1-train_config['validation']))
 
-data_queue,processes = DataGenerator.stream(2,1,train_config)
+data_queue,processes = DataGenerator.stream(2,2,train_config)
 try:
     validation_data = DataGenerator.getValidationData(train_config)
     validation_data_y = DataGenerator.inferYFromBatch(validation_data,train_config)
@@ -66,6 +66,7 @@ try:
     sess = tf.keras.backend.get_session()
     with sess.as_default():
         tb = TensorBoard(log_dir='./logs')
+        model.summary()
         logging.info("Start Training")
         model.fit_generator(generator=train_generator(),
                             validation_data=[validation_data,validation_data_y],
