@@ -123,7 +123,8 @@ def invertDisplacements(args):
 def concatenateTransforms(args):
     fw_disp,inv_disp = args
     x,y,z = K.int_shape(fw_disp)[1:4]
-
+    print("CONCAT 1-0:"+str(K.int_shape(inv_disp)))
+    print("CONCAT 1-1:"+str(K.int_shape(fw_disp)))
     # ij indexing doesn't change (x,y,z) to (y,x,z)
     grid = tf.expand_dims(tf.stack(tf.meshgrid(
         tf.linspace(0.,x-1.,x),
@@ -144,6 +145,7 @@ def concatenateTransforms(args):
     fwInv_grids_offset = [ disp_g - g for g,disp_g in zip(grids,fwInv_displaced_grids)]
     # rearrange dimensions
     fwInv_final = tf.stack([tf.squeeze(fwInv_grids_offset[i],4) for i in range(3)],4)
+    print("CONCAT 2:"+str(K.int_shape(fwInv_final)))
     return fwInv_final
 
 
