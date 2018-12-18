@@ -154,49 +154,76 @@ def create_model(config):
     # input [1]: moving
     # input [2]: fixed
     x_all = Input(shape=input_shape)
+    print("0-0: "+str(K.int_shape(x_all)))
 
     x_1 = Lambda(lambda args:tf.stack([args[:,:,:,:,0],args[:,:,:,:,1]],axis=-1))(x_all)
     x_2 = Lambda(lambda args:tf.stack([args[:,:,:,:,0],args[:,:,:,:,2]],axis=-1))(x_all)
+    print("0-1: "+str(K.int_shape(x_1)))
+    print("0-2: "+str(K.int_shape(x_2)))
     vnet = build_vnet_model([16,32,32],config)
     vout_1 = vnet(x_1)
     vout_2 = vnet(x_2)
-
+    print("1: "+str(K.int_shape(vout_1)))
+    print("2: "+str(K.int_shape(vout_2)))
     mu_sigma_conv = build_sampling_model(config,channels_of_input=32)
     mu_sigma_1 = mu_sigma_conv(vout_1)
     mu_sigma_2 = mu_sigma_conv(vout_2)
+    print("3: "+str(K.int_shape(mu_sigma_1)))
+    print("4: "+str(K.int_shape(mu_sigma_2)))
 
     velo_1 = Lambda(sampling,name="VELO_1")(mu_sigma_1)
     velo_2= Lambda(sampling,name="VELO_2")(mu_sigma_2)
+    print("5: "+str(K.int_shape(velo_1)))
+    print("6: "+str(K.int_shape(velo_2)))
 
     z_1 = Concatenate(name='KL_1')(mu_sigma_1)
     z_2 = Concatenate(name='KL_2')(mu_sigma_2)
+    print("7: "+str(K.int_shape(z_1)))
+    print("8: "+str(K.int_shape(z_2)))
 
     zs = Average()([z_1,z_2])
+    print("9: "+str(K.int_shape(zs)))
 
     if config['half_res']:
         disp_low_1 = Lambda(toDisplacements(steps=config['exponentialSteps']))(velo_1)
         disp_low_2 = Lambda(toDisplacements(steps=config['exponentialSteps']))(velo_2)
+        print("10: "+str(K.int_shape(disp_low_1)))
+        print("11: "+str(K.int_shape(disp_low_2)))
+
         # upsample displacement map
         disp_upsampled_1 = Lambda(toUpscaleResampled)(disp_low_1)
         disp_upsampled_2 = Lambda(toUpscaleResampled)(disp_low_2)
+        print("12: "+str(K.int_shape(disp_upsampled_1)))
+        print("13: "+str(K.int_shape(disp_upsampled_2)))
         # we need to fix displacement vectors which are too small after upsampling
         disp_1 = Lambda(lambda dispMap: tf.scalar_mul(2.,dispMap),name="disp1")(disp_upsampled_1)
         disp_2 = Lambda(lambda dispMap: tf.scalar_mul(2.,dispMap),name="disp2")(disp_upsampled_2)
+        print("14: "+str(K.int_shape(disp_1)))
+        print("15: "+str(K.int_shape(disp_2)))
     else:
         disp_1 = Lambda(toDisplacements,name="disp1")(velo_1)
         disp_2 = Lambda(toDisplacements,name="disp2")(velo_2)
 
     warped_1 = Lambda(transformVolume1,name="warpToAtlas_1")([x_all,disp_1])
     warped_2 = Lambda(transformVolume2,name="warpToAtlas_2")([x_all,disp_2])
+    print("16: "+str(K.int_shape(warped_1)))
+    print("17: "+str(K.int_shape(warped_2)))
+
 
     invDisp_1 = Lambda(invertDisplacements)(disp_1)
     invDisp_2 = Lambda(invertDisplacements)(disp_2)
+    print("18: "+str(K.int_shape(invDisp_1)))
+    print("19: "+str(K.int_shape(invDisp_2)))
 
     warpedAtlas_1 = Lambda(transformAtlas,name="warpInv_1")([x_all,invDisp_1])
     warpedAtlas_2 = Lambda(transformAtlas,name="warpInv_2")([x_all,invDisp_2])
+    print("20: "+str(K.int_shape(warpedAtlas_1)))
+    print("21: "+str(K.int_shape(invDisp_2)))
 
     v1_to_v2_disp = Lambda(concatenateTransforms)([disp_1,invDisp_2])
     warped_1_to_2 = Lambda(transformVolume1,name="warp_v1_to_v2")([x_all,v1_to_v2_disp])
+    print("22: "+str(K.int_shape(v1_to_v2_disp)))
+    print("23: "+str(K.int_shape(warped_1_to_2)))
 
     loss = [empty_loss,
             cc3D(),
