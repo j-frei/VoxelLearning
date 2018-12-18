@@ -121,9 +121,8 @@ def transformVolume2(args):
 
 def transformAtlas(args):
     x,disp = args
-    inv_disp = invertDisplacements(disp)
     moving_vol = tf.reshape(x[:,:,:,:,0],(tf.shape(x)[0],tf.shape(x)[1],tf.shape(x)[2],tf.shape(x)[3],1))
-    transformed_atlas = remap3d(moving_vol,inv_disp)
+    transformed_atlas = remap3d(moving_vol,disp)
     return transformed_atlas
 
 
@@ -188,7 +187,7 @@ def create_model(config):
     warped_2 = Lambda(transformVolume2,name="warpToAtlas_2")([x_all,disp_2])
 
     invDisp_1 = Lambda(invertDisplacements)(disp_1)
-    invDisp_2 = Lambda(invertDisplacements)(disp_1)
+    invDisp_2 = Lambda(invertDisplacements)(disp_2)
 
     warpedAtlas_1 = Lambda(transformAtlas,name="warpInv_1")([x_all,invDisp_1])
     warpedAtlas_2 = Lambda(transformAtlas,name="warpInv_2")([x_all,invDisp_2])
