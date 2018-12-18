@@ -173,8 +173,8 @@ def create_model(config):
     print("4-0: "+str(K.int_shape(mu_sigma_2[0])))
     print("4-1: "+str(K.int_shape(mu_sigma_2[1])))
 
-    velo_1 = Lambda(sampling,name="VELO_1")(mu_sigma_1)
-    velo_2= Lambda(sampling,name="VELO_2")(mu_sigma_2)
+    velo_1 = Lambda(sampling,name="VELO_1")(Concatenate(mu_sigma_1))
+    velo_2= Lambda(sampling,name="VELO_2")(Concatenate(mu_sigma_2))
     print("5: "+str(K.int_shape(velo_1)))
     print("6: "+str(K.int_shape(velo_2)))
 
