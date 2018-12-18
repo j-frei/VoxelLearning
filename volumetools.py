@@ -15,7 +15,7 @@ def tfVectorFieldExp(grad, grid,n_steps):
     N = n_steps
 
     shapes = tf.shape(grad)
-    batch_size, size_x, size_y, size_z, channels = shapes[0], *K.int_shape(grad)[1:5]
+    batch_size, size_x, size_y, size_z, channels = (shapes[0], *K.int_shape(grad)[1:5])
 
     id_x = tf.reshape(grid[:, :, :, :, 0], [batch_size, size_x, size_y, size_z, 1])
     id_y = tf.reshape(grid[:, :, :, :, 1], [batch_size, size_x, size_y, size_z, 1])

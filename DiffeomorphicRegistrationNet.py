@@ -109,19 +109,22 @@ def toUpscaleResampled(args):
 
 def transformVolume1(args):
     x,disp = args
-    moving_vol = tf.reshape(x[:,:,:,:,1],(tf.shape(x)[0],tf.shape(x)[1],tf.shape(x)[2],tf.shape(x)[3],1))
+    shape = [tf.shape(x)[0], *K.int_shape(x)[1:4], 1]
+    moving_vol = tf.reshape(x[:,:,:,:,1],shape)
     transformed_volumes = remap3d(moving_vol,disp)
     return transformed_volumes
 
 def transformVolume2(args):
     x,disp = args
-    moving_vol = tf.reshape(x[:,:,:,:,2],(tf.shape(x)[0],tf.shape(x)[1],tf.shape(x)[2],tf.shape(x)[3],1))
+    shape = [tf.shape(x)[0], *K.int_shape(x)[1:4], 1]
+    moving_vol = tf.reshape(x[:,:,:,:,2],shape)
     transformed_volumes = remap3d(moving_vol,disp)
     return transformed_volumes
 
 def transformAtlas(args):
     x,disp = args
-    moving_vol = tf.reshape(x[:,:,:,:,0],(tf.shape(x)[0],tf.shape(x)[1],tf.shape(x)[2],tf.shape(x)[3],1))
+    shape = [tf.shape(x)[0], *K.int_shape(x)[1:4], 1]
+    moving_vol = tf.reshape(x[:,:,:,:,0],shape)
     transformed_atlas = remap3d(moving_vol,disp)
     return transformed_atlas
 
@@ -147,10 +150,11 @@ def sampleLoss(true_y,pred_y):
 def create_model(config):
     input_shape = (*config['resolution'][0:3],3)
 
-    x_all = Input(shape=input_shape)
     # input [0]: atlas
     # input [1]: moving
     # input [2]: fixed
+    x_raw_input = Input(shape=input_shape)
+    x_all = Lambda(lambda arg:tf.reshape(x_all,[tf.shape(arg)[0],K.int_shape(arg)[1:4],3]))(x_raw_input)
 
     x_1 = Lambda(lambda args:tf.stack([args[:,:,:,:,0],args[:,:,:,:,1]],axis=-1))(x_all)
     x_2 = Lambda(lambda args:tf.stack([args[:,:,:,:,0],args[:,:,:,:,2]],axis=-1))(x_all)
@@ -194,9 +198,7 @@ def create_model(config):
 
     v1_to_v2_disp = Lambda(concatenateTransforms)([disp_1,invDisp_2])
     warped_1_to_2 = Lambda(transformVolume1,name="warp_v1_to_v2")([x_all,v1_to_v2_disp])
-    print(K.int_shape(warped_1))
-    print(K.int_shape(warpedAtlas_1))
-    print(K.int_shape(warped_1_to_2))
+
     loss = [empty_loss,
             cc3D(),
             sampleLoss,
