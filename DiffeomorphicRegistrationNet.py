@@ -254,5 +254,5 @@ def create_model(config):
                    0.8,1.0,
                    ]
     model = Model(inputs=x_all,outputs=outputs)
-    model.compile(optimizer=Adam(lr=1e-4),loss=loss,loss_weights=lossWeights,metrics=['accuracy'])
+    model.compile(optimizer=Adam(),loss=loss,loss_weights=lossWeights,metrics=['accuracy'])
     return model
