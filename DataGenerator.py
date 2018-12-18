@@ -3,7 +3,7 @@ from multiprocessing import Process, Queue
 import numpy as np
 from DataLoader import loadOASISData
 from Preprocessing import readNormalizedVolumeByPath, readNormalizedAtlasAndITKAtlas
-import logging
+import logging, random
 
 def stream(n_elements,n_processes,config):
     q = Queue(n_elements)
@@ -31,7 +31,6 @@ def loadAtlas(config):
 def getBatches(*args):
     q,p_number,config = args
 
-    import random
     random.seed(p_number)
     atlas, itk_atlas = loadAtlas(config)
 
@@ -64,15 +63,16 @@ def getValidationData(config):
 
     data_val = train[:int(len(train) * config['validation'])]
     l = len(data_val)
-    val = np.empty(shape=(l*2,*volume_shape,3))
+    val = np.empty(shape=(l,*volume_shape,3))
+    toPair = list(range(l))
+    random.shuffle(toPair)
 
     for i in range(l):
-        for j in range(l):
-            vol1 = readNormalizedVolumeByPath(data_val[i]['img'], itk_atlas )
-            vol2 = readNormalizedVolumeByPath(data_val[j]['img'], itk_atlas )
-            val[i, :, :, :, 0] = atlas.reshape(volume_shape).astype("float32")
-            val[i, :, :, :, 1] = vol1.reshape(volume_shape).astype("float32")
-            val[i, :, :, :, 2] = vol2.reshape(volume_shape).astype("float32")
+        vol1 = readNormalizedVolumeByPath(data_val[i]['img'], itk_atlas )
+        vol2 = readNormalizedVolumeByPath(data_val[toPair[i]]['img'], itk_atlas )
+        val[i, :, :, :, 0] = atlas.reshape(volume_shape).astype("float32")
+        val[i, :, :, :, 1] = vol1.reshape(volume_shape).astype("float32")
+        val[i, :, :, :, 2] = vol2.reshape(volume_shape).astype("float32")
     
     return val
 
@@ -84,15 +84,16 @@ def getTestData(config):
     volume_shape = config['resolution']
 
     l = len(data_test)
-    test = np.empty(shape=(l*2, *volume_shape, 3))
+    test = np.empty(shape=(l, *volume_shape, 3))
+    toPair = list(range(l))
+    random.shuffle(toPair)
 
     for i in range(l):
-        for j in range(l):
-            vol1 = readNormalizedVolumeByPath(data_test[i]['img'], itk_atlas )
-            vol2 = readNormalizedVolumeByPath(data_test[j]['img'], itk_atlas )
-            test[i, :, :, :, 0] = atlas.reshape(volume_shape).astype("float32")
-            test[i, :, :, :, 1] = vol1.reshape(volume_shape).astype("float32")
-            test[i, :, :, :, 2] = vol2.reshape(volume_shape).astype("float32")
+        vol1 = readNormalizedVolumeByPath(data_test[i]['img'], itk_atlas )
+        vol2 = readNormalizedVolumeByPath(data_test[toPair[i]]['img'], itk_atlas )
+        test[i, :, :, :, 0] = atlas.reshape(volume_shape).astype("float32")
+        test[i, :, :, :, 1] = vol1.reshape(volume_shape).astype("float32")
+        test[i, :, :, :, 2] = vol2.reshape(volume_shape).astype("float32")
 
     return test
 

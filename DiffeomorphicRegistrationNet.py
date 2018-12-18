@@ -7,7 +7,7 @@ from tensorflow import keras
 import numpy as np
 from keras.models import Model
 from keras.layers import Conv3D, Conv3DTranspose, Dense, BatchNormalization, Input, Concatenate, UpSampling3D, \
-    MaxPool3D, K, Flatten, Reshape, Lambda, LeakyReLU, Add
+    MaxPool3D, K, Flatten, Reshape, Lambda, LeakyReLU, Add, Average
 from tensorflow.contrib.distributions import MultivariateNormalDiag as MultivariateNormal
 from tensorflow.python.ops.losses.util import add_loss
 from GroupNorm import GroupNormalization
@@ -168,7 +168,7 @@ def create_model(config):
     z_1 = Concatenate(name='KL_1')(mu_sigma_1)
     z_2 = Concatenate(name='KL_2')(mu_sigma_2)
 
-    zs = Add()([z_1,z_2])
+    zs = Average()([z_1,z_2])
 
     if config['half_res']:
         disp_low_1 = Lambda(toDisplacements(steps=config['exponentialSteps']))(velo_1)
@@ -194,7 +194,9 @@ def create_model(config):
 
     v1_to_v2_disp = Lambda(concatenateTransforms)([disp_1,invDisp_2])
     warped_1_to_2 = Lambda(transformVolume1,name="warp_v1_to_v2")([x_all,v1_to_v2_disp])
-
+    print(K.int_shape(warped_1))
+    print(K.int_shape(warpedAtlas_1))
+    print(K.int_shape(warped_1_to_2))
     loss = [empty_loss,
             cc3D(),
             sampleLoss,
