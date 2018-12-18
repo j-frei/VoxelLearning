@@ -168,8 +168,10 @@ def create_model(config):
     mu_sigma_conv = build_sampling_model(config,channels_of_input=32)
     mu_sigma_1 = mu_sigma_conv(vout_1)
     mu_sigma_2 = mu_sigma_conv(vout_2)
-    print("3: "+str(K.int_shape(mu_sigma_1)))
-    print("4: "+str(K.int_shape(mu_sigma_2)))
+    print("3-0: "+str(K.int_shape(mu_sigma_1[0])))
+    print("3-1: "+str(K.int_shape(mu_sigma_1[1])))
+    print("4-0: "+str(K.int_shape(mu_sigma_2[0])))
+    print("4-1: "+str(K.int_shape(mu_sigma_2[1])))
 
     velo_1 = Lambda(sampling,name="VELO_1")(mu_sigma_1)
     velo_2= Lambda(sampling,name="VELO_2")(mu_sigma_2)
