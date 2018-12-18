@@ -108,6 +108,8 @@ def inferYFromBatch(batch,config):
         np.asarray([ volumes[:,:,:,2].reshape(*config['resolution'], 1) for volumes in batch ]),
         # mean, sigma pairs
         np.asarray([np.zeros(shape=(*velo_res, 2)).astype(np.float32) for _ in range(len(batch))]),
+        # mean, sigma pairs
+        np.asarray([np.zeros(shape=(*velo_res, 2)).astype(np.float32) for _ in range(len(batch))]),
         # velocity maps 1
         np.asarray([np.zeros(shape=(*velo_res, 3)).astype(np.float32) for _ in range(len(batch))]),
         # velocity maps 2

@@ -183,9 +183,6 @@ def create_model(config):
     print("7: "+str(K.int_shape(z_1)))
     print("8: "+str(K.int_shape(z_2)))
 
-    zs = Average()([z_1,z_2])
-    print("9: "+str(K.int_shape(zs)))
-
     if config['half_res']:
         disp_low_1 = Lambda(toDisplacements(steps=config['exponentialSteps']))(velo_1)
         disp_low_2 = Lambda(toDisplacements(steps=config['exponentialSteps']))(velo_2)
@@ -229,7 +226,7 @@ def create_model(config):
 
     loss = [empty_loss,
             cc3D(),
-            sampleLoss,
+            sampleLoss,sampleLoss,
             smoothness(config['batchsize']),smoothness(config['batchsize']),
             cc3D(),cc3D(),
             cc3D(),cc3D(),
@@ -237,7 +234,7 @@ def create_model(config):
     outputs = [
         v1_to_v2_disp,
         warped_1_to_2,
-        zs,
+        mu_sigma_1,mu_sigma_2,
         velo_1,velo_2,
         warped_1,warped_2,
         warpedAtlas_1,warpedAtlas_2,
@@ -247,7 +244,7 @@ def create_model(config):
                    # data term / CC
                    1.0,
                    # loglikelihood
-                   0.2,
+                   0.2,0.2,
                    # smoothness
                    0.000002,0.000002,
                    # data term / CC to atlas warp
