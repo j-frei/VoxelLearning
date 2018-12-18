@@ -18,6 +18,8 @@ train_config = {
     'validation':0.1,
     'half_res':True,
     'epochs': 200,
+    'groupnorm':True,
+    'GN_groups':4,
     'atlas': 'atlas.nii.gz',
     'model_output': 'model.pkl',
     'exponentialSteps': 7,

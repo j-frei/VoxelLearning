@@ -10,7 +10,7 @@ from keras.layers import Conv3D, Conv3DTranspose, Dense, BatchNormalization, Inp
     MaxPool3D, K, Flatten, Reshape, Lambda, LeakyReLU
 from tensorflow.contrib.distributions import MultivariateNormalDiag as MultivariateNormal
 from tensorflow.python.ops.losses.util import add_loss
-import tensorflow as tf
+from GroupNorm import GroupNormalization
 from dense_3D_spatial_transformer import Dense3DSpatialTransformer
 from losses import cc3D
 from volumetools import volumeGradients, tfVectorFieldExp, remap3d, upsample, invertDisplacements
@@ -21,9 +21,11 @@ def __vnet_level__(in_layer, filters, config,remove_last_conv=False):
     else:
         tlayer = LeakyReLU()(Conv3D(filters=filters[0],kernel_size=3, padding='same')(in_layer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
+        tlayer = GroupNormalization(groups=config.get("GN_groups",0))(tlayer) if bool(config.get("groupnorm",False)) else tlayer
 
         down = LeakyReLU()(Conv3D(filters=filters[0],kernel_size=3, strides=2, padding='same')(tlayer))
         down = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else down
+        tlayer = GroupNormalization(groups=config.get("GN_groups",0))(tlayer) if bool(config.get("groupnorm",False)) else tlayer
 
         out_deeper = __vnet_level__(down,filters[1:],config)
         if remove_last_conv:
@@ -32,9 +34,11 @@ def __vnet_level__(in_layer, filters, config,remove_last_conv=False):
 
         tlayer = Concatenate()([up,tlayer])
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
+        tlayer = GroupNormalization(groups=config.get("GN_groups",0))(tlayer) if bool(config.get("groupnorm",False)) else tlayer
 
         tlayer = LeakyReLU()(Conv3D(filters=filters[0],kernel_size=3, padding='same')(tlayer))
         tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
+        tlayer = GroupNormalization(groups=config.get("GN_groups",0))(tlayer) if bool(config.get("groupnorm",False)) else tlayer
 
         return tlayer
 
