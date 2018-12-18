@@ -7,40 +7,61 @@ from tensorflow import keras
 import numpy as np
 from keras.models import Model
 from keras.layers import Conv3D, Conv3DTranspose, Dense, BatchNormalization, Input, Concatenate, UpSampling3D, \
-    MaxPool3D, K, Flatten, Reshape, Lambda, LeakyReLU
+    MaxPool3D, K, Flatten, Reshape, Lambda, LeakyReLU, Add
 from tensorflow.contrib.distributions import MultivariateNormalDiag as MultivariateNormal
 from tensorflow.python.ops.losses.util import add_loss
 from GroupNorm import GroupNormalization
 from dense_3D_spatial_transformer import Dense3DSpatialTransformer
 from losses import cc3D
-from volumetools import volumeGradients, tfVectorFieldExp, remap3d, upsample, invertDisplacements
+from volumetools import volumeGradients, tfVectorFieldExp, remap3d, upsample, invertDisplacements, concatenateTransforms
 
-def __vnet_level__(in_layer, filters, config,remove_last_conv=False):
-    if len(filters) == 1:
-        return LeakyReLU()(Conv3D(filters=filters[0],kernel_size=3, padding='same')(in_layer))
-    else:
-        tlayer = LeakyReLU()(Conv3D(filters=filters[0],kernel_size=3, padding='same')(in_layer))
-        tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
-        tlayer = GroupNormalization(groups=config.get("GN_groups",0))(tlayer) if bool(config.get("groupnorm",False)) else tlayer
+def build_vnet_model(filters,config):
+    input_shape = (*config['resolution'][0:3],2)
+    x = Input(shape=input_shape)
 
-        down = LeakyReLU()(Conv3D(filters=filters[0],kernel_size=3, strides=2, padding='same')(tlayer))
-        down = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else down
-        tlayer = GroupNormalization(groups=config.get("GN_groups",0))(tlayer) if bool(config.get("groupnorm",False)) else tlayer
+    def __vnet_level__(in_layer, filters, config,remove_last_conv=False):
+        if len(filters) == 1:
+            return LeakyReLU()(Conv3D(filters=filters[0],kernel_size=3, padding='same')(in_layer))
+        else:
+            tlayer = LeakyReLU()(Conv3D(filters=filters[0],kernel_size=3, padding='same')(in_layer))
+            tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
+            tlayer = GroupNormalization(groups=config.get("GN_groups",0))(tlayer) if bool(config.get("groupnorm",False)) else tlayer
 
-        out_deeper = __vnet_level__(down,filters[1:],config)
-        if remove_last_conv:
-            return out_deeper
-        up = LeakyReLU()(Conv3DTranspose(filters=filters[0],kernel_size=3,strides=2,padding='same')(out_deeper))
+            down = LeakyReLU()(Conv3D(filters=filters[0],kernel_size=3, strides=2, padding='same')(tlayer))
+            down = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else down
+            tlayer = GroupNormalization(groups=config.get("GN_groups",0))(tlayer) if bool(config.get("groupnorm",False)) else tlayer
 
-        tlayer = Concatenate()([up,tlayer])
-        tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
-        tlayer = GroupNormalization(groups=config.get("GN_groups",0))(tlayer) if bool(config.get("groupnorm",False)) else tlayer
+            out_deeper = __vnet_level__(down,filters[1:],config)
+            if remove_last_conv:
+                return out_deeper
+            up = LeakyReLU()(Conv3DTranspose(filters=filters[0],kernel_size=3,strides=2,padding='same')(out_deeper))
 
-        tlayer = LeakyReLU()(Conv3D(filters=filters[0],kernel_size=3, padding='same')(tlayer))
-        tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
-        tlayer = GroupNormalization(groups=config.get("GN_groups",0))(tlayer) if bool(config.get("groupnorm",False)) else tlayer
+            tlayer = Concatenate()([up,tlayer])
+            tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
+            tlayer = GroupNormalization(groups=config.get("GN_groups",0))(tlayer) if bool(config.get("groupnorm",False)) else tlayer
 
-        return tlayer
+            tlayer = LeakyReLU()(Conv3D(filters=filters[0],kernel_size=3, padding='same')(tlayer))
+            tlayer = BatchNormalization()(tlayer) if bool(config.get("batchnorm",False)) else tlayer
+            tlayer = GroupNormalization(groups=config.get("GN_groups",0))(tlayer) if bool(config.get("groupnorm",False)) else tlayer
+
+            return tlayer
+    y = __vnet_level__(x,filters,config,remove_last_conv=config.get("half_res",False))
+    return Model(inputs=x,outputs=y)
+
+def build_sampling_model(config, channels_of_input):
+    res = config['resolution'][0:3]
+    if config.get('half_res',False):
+        res = [ int(axis/2) for axis in res ]
+
+    basic_input_shape = (*res,channels_of_input)
+    x = Input(shape=basic_input_shape)
+
+    # down-conv
+    mu = Conv3D(3,kernel_size=3, padding='same')(x)
+    log_sigma = Conv3D(3,kernel_size=3, padding='same')(x)
+
+    y = [mu,log_sigma]
+    return Model(inputs=x,outputs=y)
 
 def sampling(args):
     z_mean, z_log_sigma = args
@@ -86,9 +107,15 @@ def toUpscaleResampled(args):
     result = tf.squeeze(tf.stack([upsampled_x,upsampled_y,upsampled_z],4),5)
     return result
 
-def transformVolume(args):
+def transformVolume1(args):
     x,disp = args
     moving_vol = tf.reshape(x[:,:,:,:,1],(tf.shape(x)[0],tf.shape(x)[1],tf.shape(x)[2],tf.shape(x)[3],1))
+    transformed_volumes = remap3d(moving_vol,disp)
+    return transformed_volumes
+
+def transformVolume2(args):
+    x,disp = args
+    moving_vol = tf.reshape(x[:,:,:,:,2],(tf.shape(x)[0],tf.shape(x)[1],tf.shape(x)[2],tf.shape(x)[3],1))
     transformed_volumes = remap3d(moving_vol,disp)
     return transformed_volumes
 
@@ -98,6 +125,7 @@ def transformAtlas(args):
     moving_vol = tf.reshape(x[:,:,:,:,0],(tf.shape(x)[0],tf.shape(x)[1],tf.shape(x)[2],tf.shape(x)[3],1))
     transformed_atlas = remap3d(moving_vol,inv_disp)
     return transformed_atlas
+
 
 def empty_loss(true_y,pred_y):
     return tf.constant(0.,dtype=tf.float32)
@@ -118,42 +146,84 @@ def sampleLoss(true_y,pred_y):
 
 
 def create_model(config):
-    input_shape = (*config['resolution'][0:3],2)
+    input_shape = (*config['resolution'][0:3],3)
 
-    x = Input(shape=input_shape)
-    out = __vnet_level__(x,[16,32,32],config,remove_last_conv=config['half_res'])
-    # down-conv
-    mu = Conv3D(3,kernel_size=3, padding='same')(out)
-    log_sigma = Conv3D(3,kernel_size=3, padding='same')(out)
+    x_all = Input(shape=input_shape)
+    # input [0]: atlas
+    # input [1]: moving
+    # input [2]: fixed
 
-    sampled_velocity_maps = Lambda(sampling,name="variationalVelocitySampling")([mu,log_sigma])
+    x_1 = Lambda(lambda args:tf.stack([args[:,:,:,:,0],args[:,:,:,:,1]],axis=-1))(x_all)
+    x_2 = Lambda(lambda args:tf.stack([args[:,:,:,:,0],args[:,:,:,:,2]],axis=-1))(x_all)
+    vnet = build_vnet_model([16,32,32],config)
+    vout_1 = vnet(x_1)
+    vout_2 = vnet(x_2)
 
-    z = Concatenate(name='zVariationalLoss')([mu, log_sigma])
-    grads = sampled_velocity_maps
+    mu_sigma_conv = build_sampling_model(config,channels_of_input=32)
+    mu_sigma_1 = mu_sigma_conv(vout_1)
+    mu_sigma_2 = mu_sigma_conv(vout_2)
+
+    velo_1 = Lambda(sampling,name="VELO_1")(mu_sigma_1)
+    velo_2= Lambda(sampling,name="VELO_2")(mu_sigma_2)
+
+    z_1 = Concatenate(name='KL_1')(mu_sigma_1)
+    z_2 = Concatenate(name='KL_2')(mu_sigma_2)
+
+    zs = Add()([z_1,z_2])
 
     if config['half_res']:
-        disp_low = Lambda(toDisplacements(steps=config['exponentialSteps']))(grads)
+        disp_low_1 = Lambda(toDisplacements(steps=config['exponentialSteps']))(velo_1)
+        disp_low_2 = Lambda(toDisplacements(steps=config['exponentialSteps']))(velo_2)
         # upsample displacement map
-        disp_upsampled = Lambda(toUpscaleResampled)(disp_low)
+        disp_upsampled_1 = Lambda(toUpscaleResampled)(disp_low_1)
+        disp_upsampled_2 = Lambda(toUpscaleResampled)(disp_low_2)
         # we need to fix displacement vectors which are too small after upsampling
-        disp = Lambda(lambda dispMap: tf.scalar_mul(2.,dispMap),name="manifold_walk")(disp_upsampled)
+        disp_1 = Lambda(lambda dispMap: tf.scalar_mul(2.,dispMap),name="disp1")(disp_upsampled_1)
+        disp_2 = Lambda(lambda dispMap: tf.scalar_mul(2.,dispMap),name="disp2")(disp_upsampled_2)
     else:
-        disp = Lambda(toDisplacements,name="manifold_walk")(grads)
+        disp_1 = Lambda(toDisplacements,name="disp1")(velo_1)
+        disp_2 = Lambda(toDisplacements,name="disp2")(velo_2)
 
-    warped = Lambda(transformVolume,name="img_warp")([x,disp])
-    warpedAtlas = Lambda(transformAtlas,name="atlas_warp")([x,disp])
+    warped_1 = Lambda(transformVolume1,name="warpToAtlas_1")([x_all,disp_1])
+    warped_2 = Lambda(transformVolume2,name="warpToAtlas_2")([x_all,disp_2])
 
-    loss = [empty_loss,cc3D(),smoothness(config['batchsize']),sampleLoss,cc3D()]
-    lossWeights = [0.,
+    invDisp_1 = Lambda(invertDisplacements)(disp_1)
+    invDisp_2 = Lambda(invertDisplacements)(disp_1)
+
+    warpedAtlas_1 = Lambda(transformAtlas,name="warpInv_1")([x_all,invDisp_1])
+    warpedAtlas_2 = Lambda(transformAtlas,name="warpInv_2")([x_all,invDisp_2])
+
+    v1_to_v2_disp = Lambda(concatenateTransforms)([disp_1,invDisp_2])
+    warped_1_to_2 = Lambda(transformVolume1,name="warp_v1_to_v2")([x_all,v1_to_v2_disp])
+
+    loss = [empty_loss,
+            cc3D(),
+            sampleLoss,
+            smoothness(config['batchsize']),smoothness(config['batchsize']),
+            cc3D(),cc3D(),
+            cc3D(),cc3D(),
+    ]
+    outputs = [
+        v1_to_v2_disp,
+        warped_1_to_2,
+        zs,
+        velo_1,velo_2,
+        warped_1,warped_2,
+        warpedAtlas_1,warpedAtlas_2,
+    ]
+    lossWeights = [# displacement
+                   0.,
                    # data term / CC
                    1.0,
-                   # smoothness
-                   0.000002,
                    # loglikelihood
                    0.2,
-                   # data term / CC atlas warp
-                   1.0
+                   # smoothness
+                   0.000002,0.000002,
+                   # data term / CC to atlas warp
+                   1.0,0.8,
+                   # data term / CC from atlas to vols (inv warp)
+                   0.8,1.0,
                    ]
-    model = Model(inputs=x,outputs=[disp,warped,sampled_velocity_maps,z,warpedAtlas])
+    model = Model(inputs=x_all,outputs=outputs)
     model.compile(optimizer=Adam(lr=1e-4),loss=loss,loss_weights=lossWeights,metrics=['accuracy'])
     return model

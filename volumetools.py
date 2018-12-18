@@ -108,16 +108,43 @@ def invertDisplacements(args):
 
     # replicate along batch size
     stacked_grids = tf.tile(grid,(tf.shape(args)[0],1,1,1,1))
-    print(stacked_grids.shape)
     grids = [tf.expand_dims(stacked_grids[:,:,:,:,i],4) for i in range(3)]
-    print(grids[0].shape)
+
+    # warp meshgrid
     displaced_grids = [remap3d(subgrid,disp) for subgrid in grids]
-    print(displaced_grids[0].shape)
+    # flip vectors to point to old position
     inverted_grids = [ g-disp_g for g,disp_g in zip(grids,displaced_grids)]
-    print(inverted_grids[0].shape)
+    # rearrange dimensions
     inverted_grid = tf.stack([tf.squeeze(inverted_grids[i],4) for i in range(3)],4)
-    print(inverted_grid.shape)
     return inverted_grid
+
+
+def concatenateTransforms(args):
+    fw_disp,inv_disp = args
+    x,y,z = K.int_shape(fw_disp)[1:4]
+
+    # ij indexing doesn't change (x,y,z) to (y,x,z)
+    grid = tf.expand_dims(tf.stack(tf.meshgrid(
+        tf.linspace(0.,x-1.,x),
+        tf.linspace(0.,y-1.,y),
+        tf.linspace(0.,z-1.,z)
+        ,indexing='ij'),-1),
+    0)
+
+    # replicate along batch size
+    stacked_grids = tf.tile(grid,(tf.shape(args)[0],1,1,1,1))
+    grids = [tf.expand_dims(stacked_grids[:,:,:,:,i],4) for i in range(3)]
+
+    # warp meshgrid
+    fw_displaced_grids = [remap3d(subgrid,fw_disp) for subgrid in grids]
+    fwInv_displaced_grids = [remap3d(subgrid,inv_disp) for subgrid in fw_displaced_grids]
+
+    # switch absolute to relative (offset)
+    fwInv_grids_offset = [ disp_g - g for g,disp_g in zip(grids,fwInv_displaced_grids)]
+    # rearrange dimensions
+    fwInv_final = tf.stack([tf.squeeze(fwInv_grids_offset[i],4) for i in range(3)],4)
+    return fwInv_final
+
 
 def volumeGradients(tf_vf):
     # batch_size, xaxis, yaxis, zaxis, depth = \

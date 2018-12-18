@@ -43,13 +43,16 @@ def getBatches(*args):
     data_train = train[int(len(train) * config['validation']):]
 
     while True:
-        minibatch = np.empty(shape=(config['batchsize'],*volume_shape,2))
+        minibatch = np.empty(shape=(config['batchsize'],*volume_shape,3))
 
         for i in range(config['batchsize']):
-            idx_volume = random.choice(list(range(len(data_train))))
-            vol = readNormalizedVolumeByPath( data_train[idx_volume]['img'], itk_atlas )
+            idx1_volume = random.choice(list(range(len(data_train))))
+            idx2_volume = random.choice(list(range(len(data_train))))
+            vol1 = readNormalizedVolumeByPath( data_train[idx1_volume]['img'], itk_atlas )
+            vol2 = readNormalizedVolumeByPath( data_train[idx2_volume]['img'], itk_atlas )
             minibatch[i,:,:,:,0] = atlas.reshape(volume_shape).astype("float32")
-            minibatch[i,:,:,:,1] = vol.reshape(volume_shape).astype("float32")
+            minibatch[i,:,:,:,1] = vol1.reshape(volume_shape).astype("float32")
+            minibatch[i,:,:,:,2] = vol2.reshape(volume_shape).astype("float32")
 
         q.put(minibatch)
 
@@ -61,12 +64,15 @@ def getValidationData(config):
 
     data_val = train[:int(len(train) * config['validation'])]
     l = len(data_val)
-    val = np.empty(shape=(l,*volume_shape,2))
+    val = np.empty(shape=(l*2,*volume_shape,3))
 
     for i in range(l):
-        vol = readNormalizedVolumeByPath( data_val[i]['img'], itk_atlas )
-        val[i,:,:,:,0] = atlas.reshape(volume_shape).astype("float32")
-        val[i,:,:,:,1] = vol.reshape(volume_shape).astype("float32")
+        for j in range(l):
+            vol1 = readNormalizedVolumeByPath(data_val[i]['img'], itk_atlas )
+            vol2 = readNormalizedVolumeByPath(data_val[j]['img'], itk_atlas )
+            val[i, :, :, :, 0] = atlas.reshape(volume_shape).astype("float32")
+            val[i, :, :, :, 1] = vol1.reshape(volume_shape).astype("float32")
+            val[i, :, :, :, 2] = vol2.reshape(volume_shape).astype("float32")
     
     return val
 
@@ -78,12 +84,15 @@ def getTestData(config):
     volume_shape = config['resolution']
 
     l = len(data_test)
-    test = np.empty(shape=(l, *volume_shape, 2))
+    test = np.empty(shape=(l*2, *volume_shape, 3))
 
     for i in range(l):
-        vol = readNormalizedVolumeByPath(data_test[i]['img'], itk_atlas )
-        test[i, :, :, :, 0] = atlas.reshape(volume_shape).astype("float32")
-        test[i, :, :, :, 1] = vol.reshape(volume_shape).astype("float32")
+        for j in range(l):
+            vol1 = readNormalizedVolumeByPath(data_test[i]['img'], itk_atlas )
+            vol2 = readNormalizedVolumeByPath(data_test[j]['img'], itk_atlas )
+            test[i, :, :, :, 0] = atlas.reshape(volume_shape).astype("float32")
+            test[i, :, :, :, 1] = vol1.reshape(volume_shape).astype("float32")
+            test[i, :, :, :, 2] = vol2.reshape(volume_shape).astype("float32")
 
     return test
 
@@ -94,13 +103,21 @@ def inferYFromBatch(batch,config):
     y = [
         # displacement field at full resolution
         np.asarray([ np.zeros(shape=(*config['resolution'], 3)).astype(np.float32) for _ in range(len(batch)) ]),
-        # warped moving image
-        np.asarray([ volumes[:,:,:,0].reshape(*config['resolution'], 1) for volumes in batch ]),
-        # velocity maps
-        np.asarray([np.zeros(shape=(*velo_res, 3)).astype(np.float32) for _ in range(len(batch))]),
-        # mean, sigma pair
+        # warped moving image to fixed
+        np.asarray([ volumes[:,:,:,2].reshape(*config['resolution'], 1) for volumes in batch ]),
+        # mean, sigma pairs
         np.asarray([np.zeros(shape=(*velo_res, 2)).astype(np.float32) for _ in range(len(batch))]),
-        # warped atlas image
+        # velocity maps 1
+        np.asarray([np.zeros(shape=(*velo_res, 3)).astype(np.float32) for _ in range(len(batch))]),
+        # velocity maps 2
+        np.asarray([np.zeros(shape=(*velo_res, 3)).astype(np.float32) for _ in range(len(batch))]),
+        # warped to atlas image 1
+        np.asarray([ volumes[:,:,:,0].reshape(*config['resolution'], 1) for volumes in batch ]),
+        # warped to atlas image 2
+        np.asarray([ volumes[:,:,:,0].reshape(*config['resolution'], 1) for volumes in batch ]),
+        # warped from atlas to image 1
         np.asarray([ volumes[:,:,:,1].reshape(*config['resolution'], 1) for volumes in batch ]),
+        # warped from atlas to image 2
+        np.asarray([ volumes[:,:,:,2].reshape(*config['resolution'], 1) for volumes in batch ]),
     ]
     return y
