@@ -153,8 +153,7 @@ def create_model(config):
     # input [0]: atlas
     # input [1]: moving
     # input [2]: fixed
-    x_raw_input = Input(shape=input_shape)
-    x_all = Lambda(lambda arg:tf.reshape(arg,[tf.shape(arg)[0],*K.int_shape(arg)[1:4],3]))(x_raw_input)
+    x_all = Input(shape=input_shape)
 
     x_1 = Lambda(lambda args:tf.stack([args[:,:,:,:,0],args[:,:,:,:,1]],axis=-1))(x_all)
     x_2 = Lambda(lambda args:tf.stack([args[:,:,:,:,0],args[:,:,:,:,2]],axis=-1))(x_all)

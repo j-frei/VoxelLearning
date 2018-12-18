@@ -6,10 +6,11 @@ from dense_3D_spatial_transformer import Dense3DSpatialTransformer
 
 def remap3d(tf_in_vol, tf_offsets):
     # apply dense 3d interpolation with reordered axes (x,y,z) -> (y,x,z) of trf tensor
+    batch_size, size_x, size_y, size_z, channels = (tf.shape(tf_in_vol)[0],*K.int_shape(tf_in_vol)[1:4],1)
     transformed = Dense3DSpatialTransformer()([
                                        tf.transpose(tf_in_vol,perm=[0,2,1,3,4]),
                                         tf.transpose(tf_offsets,perm=[0,2,1,3,4])])
-    return tf.transpose(transformed,perm=[0,2,1,3,4])
+    return tf.reshape(tf.transpose(transformed,perm=[0,2,1,3,4]),[batch_size, size_x, size_y, size_z, channels])
 
 def tfVectorFieldExp(grad, grid,n_steps):
     N = n_steps
