@@ -134,7 +134,7 @@ def concatenateTransforms(args):
     0)
 
     # replicate along batch size
-    stacked_grids = tf.tile(grid,(tf.shape(args)[0],1,1,1,1))
+    stacked_grids = tf.tile(grid,(tf.shape(fw_disp)[0],1,1,1,1))
     grids = [tf.expand_dims(stacked_grids[:,:,:,:,i],4) for i in range(3)]
 
     # warp meshgrid

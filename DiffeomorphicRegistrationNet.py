@@ -142,8 +142,9 @@ def smoothness(batch_size):
     return smoothness_loss
 
 def sampleLoss(true_y,pred_y):
-    z_mean = tf.expand_dims(pred_y[:,:,:,:,0],-1)
-    z_log_sigma = tf.expand_dims(pred_y[:,:,:,:,1],-1)
+    z_mean = tf.stack([pred_y[:,:,:,:,0],pred_y[:,:,:,:,1],pred_y[:,:,:,:,2]],4)
+    print("Sample loss: "+str(K.int_shape(z_mean)))
+    z_log_sigma = tf.stack([pred_y[:,:,:,:,3],pred_y[:,:,:,:,4],pred_y[:,:,:,:,5]],4)
     return - 0.5 * K.mean(1 + z_log_sigma - K.square(z_mean) - K.exp(z_log_sigma), axis=-1)
 
 
@@ -166,20 +167,20 @@ def create_model(config):
     print("1: "+str(K.int_shape(vout_1)))
     print("2: "+str(K.int_shape(vout_2)))
     mu_sigma_conv = build_sampling_model(config,channels_of_input=32)
-    mu_sigma_1 = Lambda(lambda args:mu_sigma_conv.call(args))(vout_1)
-    mu_sigma_2 = Lambda(lambda args:mu_sigma_conv.call(args))(vout_2)
-    print("3-0: "+str(K.int_shape(mu_sigma_1[0])))
-    print("3-1: "+str(K.int_shape(mu_sigma_1[1])))
-    print("4-0: "+str(K.int_shape(mu_sigma_2[0])))
-    print("4-1: "+str(K.int_shape(mu_sigma_2[1])))
+    mu_1,sigma_1 = Lambda(lambda args:mu_sigma_conv.call(args))(vout_1)
+    mu_2,sigma_2 = Lambda(lambda args:mu_sigma_conv.call(args))(vout_2)
+    print("3-0: "+str(K.int_shape(mu_1)))
+    print("3-1: "+str(K.int_shape(sigma_1)))
+    print("4-0: "+str(K.int_shape(mu_2)))
+    print("4-1: "+str(K.int_shape(sigma_2)))
 
-    velo_1 = Lambda(sampling,name="VELO_1")(Concatenate()(mu_sigma_1))
-    velo_2= Lambda(sampling,name="VELO_2")(Concatenate()(mu_sigma_2))
+    velo_1 = Lambda(sampling,name="VELO_1")([mu_1,sigma_1])
+    velo_2 = Lambda(sampling,name="VELO_2")([mu_2,sigma_2])
     print("5: "+str(K.int_shape(velo_1)))
     print("6: "+str(K.int_shape(velo_2)))
 
-    z_1 = Concatenate(name='KL_1')(mu_sigma_1)
-    z_2 = Concatenate(name='KL_2')(mu_sigma_2)
+    z_1 = Concatenate(name='KL_1')([mu_1,sigma_1])
+    z_2 = Concatenate(name='KL_2')([mu_2,sigma_2])
     print("7: "+str(K.int_shape(z_1)))
     print("8: "+str(K.int_shape(z_2)))
 
@@ -234,7 +235,7 @@ def create_model(config):
     outputs = [
         v1_to_v2_disp,
         warped_1_to_2,
-        mu_sigma_1,mu_sigma_2,
+        z_1,z_2,
         velo_1,velo_2,
         warped_1,warped_2,
         warpedAtlas_1,warpedAtlas_2,
