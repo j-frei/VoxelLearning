@@ -5,6 +5,7 @@ import logging
 
 def loadOASISData():
     possible_oasis_paths = [
+    "/data/datasets_prepared/OASIS1_*.nii.gz",
     "/data/johann/datasets_prepared/OASIS1_*.nii.gz",
     "/data/Johann/johann_docker/datasets_prepared/OASIS1_*.nii.gz",
     "/mnt/hdd1/datasets_prepared/OASIS1_*.nii.gz",
