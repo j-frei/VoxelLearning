@@ -80,7 +80,7 @@ class Dense3DSpatialTransformer(Layer):
 
     def _interpolate(self, im, x, y, z):
 
-        im = tf.pad(im, [[0, 0], [1, 1], [1, 1], [1, 1], [0, 0]], "CONSTANT")
+        im = tf.pad(im, [[0, 0], [1, 1], [1, 1], [1, 1], [0, 0]], "SYMMETRIC")
 
         num_batch = tf.shape(im)[0]
         height = tf.shape(im)[1]
