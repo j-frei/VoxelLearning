@@ -247,7 +247,7 @@ def create_model(config):
                    # loglikelihood
                    0.2,0.2,
                    # smoothness
-                   0.000002,0.000002,
+                   0.00002,0.00002,
                    # data term / CC to atlas warp
                    1.0,0.8,
                    # data term / CC from atlas to vols (inv warp)
