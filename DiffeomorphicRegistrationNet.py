@@ -137,19 +137,18 @@ def create_model(config):
         disp = Lambda(toDisplacements,name="manifold_walk")(grads)
 
     warped = Lambda(transformVolume,name="img_warp")([x,disp])
-    warpedAtlas = Lambda(transformAtlas,name="atlas_warp")([x,disp])
+    #warpedAtlas = Lambda(transformAtlas,name="atlas_warp")([x,disp])
 
-    loss = [empty_loss,cc3D(),smoothness(config['batchsize']),sampleLoss,cc3D()]
+    #loss = [empty_loss,cc3D(),smoothness(config['batchsize']),sampleLoss,cc3D()]
+    loss = [empty_loss,cc3D(),smoothness(config['batchsize']),sampleLoss]
     lossWeights = [0.,
                    # data term / CC
                    1.0,
                    # smoothness
                    0.000002,
                    # loglikelihood
-                   0.2,
-                   # data term / CC atlas warp
-                   1.0
+                   0.2
                    ]
-    model = Model(inputs=x,outputs=[disp,warped,sampled_velocity_maps,z,warpedAtlas])
+    model = Model(inputs=x,outputs=[disp,warped,sampled_velocity_maps,z])
     model.compile(optimizer=Adam(lr=1e-4),loss=loss,loss_weights=lossWeights,metrics=['accuracy'])
     return model
