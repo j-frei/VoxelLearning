@@ -32,8 +32,8 @@ try:
 
     def train_generator():
         while True:
-        minibatch = data_queue.get()
-        yield minibatch,DataGenerator.inferYFromBatch(minibatch,train_config)
+            minibatch = data_queue.get()
+            yield minibatch,DataGenerator.inferYFromBatch(minibatch,train_config)
 
 
     velo_res = np.array(train_config['resolution'],dtype=np.int)
