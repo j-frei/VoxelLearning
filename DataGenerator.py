@@ -3,7 +3,7 @@ from multiprocessing import Process, Queue
 import numpy as np
 from DataLoader import loadOASISData
 from Preprocessing import readNormalizedVolumeByPath, readNormalizedAtlasAndITKAtlas
-import logging
+import logging, random
 
 def stream(n_elements,n_processes,config):
     q = Queue(n_elements)
@@ -31,7 +31,6 @@ def loadAtlas(config):
 def getBatches(*args):
     q,p_number,config = args
 
-    import random
     random.seed(p_number)
     atlas, itk_atlas = loadAtlas(config)
 
@@ -46,10 +45,12 @@ def getBatches(*args):
         minibatch = np.empty(shape=(config['batchsize'],*volume_shape,2))
 
         for i in range(config['batchsize']):
-            idx_volume = random.choice(list(range(len(data_train))))
-            vol = readNormalizedVolumeByPath( data_train[idx_volume]['img'], itk_atlas )
-            minibatch[i,:,:,:,0] = atlas.reshape(volume_shape).astype("float32")
-            minibatch[i,:,:,:,1] = vol.reshape(volume_shape).astype("float32")
+            idx1_volume = random.choice(list(range(len(data_train))))
+            idx2_volume = random.choice(list(range(len(data_train))))
+            vol1 = readNormalizedVolumeByPath( data_train[idx1_volume]['img'], itk_atlas )
+            vol2 = readNormalizedVolumeByPath( data_train[idx2_volume]['img'], itk_atlas )
+            minibatch[i,:,:,:,0] = vol1.reshape(volume_shape).astype("float32")
+            minibatch[i,:,:,:,1] = vol2.reshape(volume_shape).astype("float32")
 
         q.put(minibatch)
 
@@ -62,11 +63,14 @@ def getValidationData(config):
     data_val = train[:int(len(train) * config['validation'])]
     l = len(data_val)
     val = np.empty(shape=(l,*volume_shape,2))
+    toPair = list(range(l))
+    random.shuffle(toPair)
 
     for i in range(l):
-        vol = readNormalizedVolumeByPath( data_val[i]['img'], itk_atlas )
-        val[i,:,:,:,0] = atlas.reshape(volume_shape).astype("float32")
-        val[i,:,:,:,1] = vol.reshape(volume_shape).astype("float32")
+        vol1 = readNormalizedVolumeByPath(data_val[i]['img'], itk_atlas )
+        vol2 = readNormalizedVolumeByPath(data_val[toPair[i]]['img'], itk_atlas )
+        val[i, :, :, :, 0] = vol1.reshape(volume_shape).astype("float32")
+        val[i, :, :, :, 1] = vol2.reshape(volume_shape).astype("float32")
     
     return val
 
@@ -79,11 +83,14 @@ def getTestData(config):
 
     l = len(data_test)
     test = np.empty(shape=(l, *volume_shape, 2))
+    toPair = list(range(l))
+    random.shuffle(toPair)
 
     for i in range(l):
-        vol = readNormalizedVolumeByPath(data_test[i]['img'], itk_atlas )
-        test[i, :, :, :, 0] = atlas.reshape(volume_shape).astype("float32")
-        test[i, :, :, :, 1] = vol.reshape(volume_shape).astype("float32")
+        vol1 = readNormalizedVolumeByPath(data_test[i]['img'], itk_atlas )
+        vol2 = readNormalizedVolumeByPath(data_test[toPair[i]]['img'], itk_atlas )
+        test[i, :, :, :, 0] = vol1.reshape(volume_shape).astype("float32")
+        test[i, :, :, :, 1] = vol2.reshape(volume_shape).astype("float32")
 
     return test
 
