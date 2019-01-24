@@ -88,7 +88,7 @@ def transformVolume(args):
     transformed_volumes = remap3d(moving_vol,disp)
     return transformed_volumes
 
-def transformAtlas(args):
+def transformFixedToMoving(args):
     x,disp = args
     inv_disp = invertDisplacements(disp)
     moving_vol = tf.reshape(x[:,:,:,:,0],(tf.shape(x)[0],tf.shape(x)[1],tf.shape(x)[2],tf.shape(x)[3],1))
@@ -137,7 +137,7 @@ def create_model(config):
         disp = Lambda(toDisplacements,name="manifold_walk")(grads)
 
     warped = Lambda(transformVolume,name="img_warp")([x,disp])
-    #warpedAtlas = Lambda(transformAtlas,name="atlas_warp")([x,disp])
+    warpedFixed = Lambda(transformFixedToMoving,name="fixed_warp")([x,disp])
 
     #loss = [empty_loss,cc3D(),smoothness(config['batchsize']),sampleLoss,cc3D()]
     loss = [empty_loss,cc3D(),smoothness(config['batchsize']),sampleLoss]
@@ -147,8 +147,10 @@ def create_model(config):
                    # smoothness
                    0.000002,
                    # loglikelihood
-                   0.2
+                   0.2,
+                   # fixed to moving
+                   1.0,
                    ]
-    model = Model(inputs=x,outputs=[disp,warped,sampled_velocity_maps,z])
+    model = Model(inputs=x,outputs=[disp,warped,sampled_velocity_maps,z,warpedFixed])
     model.compile(optimizer=Adam(lr=1e-4),loss=loss,loss_weights=lossWeights,metrics=['accuracy'])
     return model
