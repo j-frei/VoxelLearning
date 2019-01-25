@@ -139,8 +139,8 @@ def create_model(config):
     warped = Lambda(transformVolume,name="img_warp")([x,disp])
     warpedFixed = Lambda(transformFixedToMoving,name="fixed_warp")([x,disp])
 
-    #loss = [empty_loss,cc3D(),smoothness(config['batchsize']),sampleLoss,cc3D()]
-    loss = [empty_loss,cc3D(),smoothness(config['batchsize']),sampleLoss]
+    loss = [empty_loss,cc3D(),smoothness(config['batchsize']),sampleLoss,cc3D()]
+    #loss = [empty_loss,cc3D(),smoothness(config['batchsize']),sampleLoss]
     lossWeights = [0.,
                    # data term / CC
                    1.0,
